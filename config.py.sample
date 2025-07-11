@@ -1,0 +1,10 @@
+# === BTSE API Credentials ===
+
+API_KEY = 'APIKEY123'
+API_SECRET = 'APIKEYSECRET123'
+
+# Base BTSE API URL
+BASE_URL = 'https://api.btse.com/futures'
+
+# === SQLite DB Path ===
+DB_PATH = 'positions.db'
