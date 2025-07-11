@@ -274,11 +274,11 @@ def compute_contracts_from_prices(symbols, contract_sizes):
 
     for symbol in symbols:
         price = get_current_price(symbol)
-        if price is None:
-            print_with_date(f"[ERROR] Could not fetch price for {symbol}. Skipping.")
+        if price is None or symbol not in contract_sizes:
+            print_with_date(f"[ERROR] Skipping {symbol}, missing price or contract size.")
             continue
         price = Decimal(str(price))
-        size = Decimal(str(contract_sizes.get(symbol, 1)))  # fallback size is 1
+        size = contract_sizes[symbol]
         value = price * size
         prices[symbol] = price
         contract_values[symbol] = value
@@ -293,8 +293,16 @@ def compute_contracts_from_prices(symbols, contract_sizes):
     # Calculate how many contracts of each symbol stay <= max_value
     contracts_map = {}
     for symbol, value in contract_values.items():
-        contracts = (max_value / value).to_integral_value(rounding=ROUND_FLOOR)
-        contracts_map[symbol] = int(max(contracts, 1))  # at least 1
+        base_contracts = (max_value / value).to_integral_value(rounding=ROUND_FLOOR)
+        base_contracts = max(base_contracts, 1)
+
+        # Apply SYMBOL_MULTIPLIER from config (optional)
+        config = SYMBOL_CONFIGS.get(symbol, {})
+        multiplier = Decimal(str(config.get("SYMBOL_MULTIPLIER", 1.0)))
+        adjusted_contracts = int((Decimal(base_contracts) * multiplier).to_integral_value(rounding=ROUND_FLOOR))
+
+        contracts_map[symbol] = max(adjusted_contracts, 1) # at least 1
+
     return contracts_map
 
 def build_trailing_stops_map():
