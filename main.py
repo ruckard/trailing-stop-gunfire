@@ -237,26 +237,36 @@ CONTRACT_SIZES = {
 }
 
 def fetch_contract_sizes(symbols):
-    try:
-        url = f"{BASE_URL}/api/v2.2/market_summary"
-        params = {"listFullAttributes": "true"}
-        response = throttled_request("GET", url, params=params)
-        response.raise_for_status()
-        data = response.json()
+    contract_sizes = {}
+    for symbol in symbols:
+        try:
+            url = f"{BASE_URL}/api/v2.2/market_summary"
+            params = {
+                "symbol": symbol,
+                "listFullAttributes": "true"
+            }
+            response = throttled_request("GET", url, params=params)
+            response.raise_for_status()
+            data = response.json()
 
-        contract_sizes = {}
-        for market in data:
-            symbol = market.get("symbol")
-            if symbol in symbols:
-                size = market.get("minOrderSize") or market.get("minSizeIncrement")
-                if size:
-                    contract_sizes[symbol] = Decimal(str(size))
-        if not contract_sizes:
-            print_with_date("[ERROR] No contract sizes could be determined.")
-        return contract_sizes
-    except Exception as e:
-        print_with_date(f"[ERROR] Failed to fetch contract sizes: {e}")
-        return {}
+            if not data:
+                print_with_date(f"[WARN] No market data returned for {symbol}")
+                continue
+
+            market = data[0] if isinstance(data, list) else data
+            contract_size = market.get("contractSize")
+            if contract_size and Decimal(str(contract_size)) > 0:
+                contract_sizes[symbol] = Decimal(str(contract_size))
+            else:
+                print_with_date(f"[WARN] No valid contractSize for {symbol}")
+
+        except Exception as e:
+            print_with_date(f"[ERROR] Failed to fetch contract size for {symbol}: {e}")
+
+    if not contract_sizes:
+        print_with_date("[ERROR] No contract sizes could be determined.")
+    return contract_sizes
+
 
 def compute_contracts_from_prices(symbols, contract_sizes):
     prices = {}
