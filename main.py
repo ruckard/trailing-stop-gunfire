@@ -236,6 +236,28 @@ CONTRACT_SIZES = {
     # Add others as needed
 }
 
+def fetch_contract_sizes(symbols):
+    try:
+        url = f"{BASE_URL}/api/v2.2/market_summary"
+        params = {"listFullAttributes": "true"}
+        response = throttled_request("GET", url, params=params)
+        response.raise_for_status()
+        data = response.json()
+
+        contract_sizes = {}
+        for market in data:
+            symbol = market.get("symbol")
+            if symbol in symbols:
+                size = market.get("minOrderSize") or market.get("minSizeIncrement")
+                if size:
+                    contract_sizes[symbol] = Decimal(str(size))
+        if not contract_sizes:
+            print_with_date("[ERROR] No contract sizes could be determined.")
+        return contract_sizes
+    except Exception as e:
+        print_with_date(f"[ERROR] Failed to fetch contract sizes: {e}")
+        return {}
+
 def compute_contracts_from_prices(symbols, contract_sizes):
     prices = {}
     contract_values = {}
@@ -781,7 +803,10 @@ def run_main_loop():
     # TODO: Save the contract map values in a second table
     # So that they can be used when the trades are resumed and some of them are still on.
     symbols = list(SYMBOL_CONFIGS.keys())
-    CONTRACTS_MAP = compute_contracts_from_prices(symbols, CONTRACT_SIZES)
+    contract_sizes = fetch_contract_sizes(symbols)
+    CONTRACTS_MAP = compute_contracts_from_prices(symbols, contract_sizes)
+
+    print_with_date(f"[CONTRACT_SIZES] {contract_sizes}")
     print_with_date(f"[CONTRACTS_MAP] {CONTRACTS_MAP}")
 
     for symbol in SYMBOL_CONFIGS:
