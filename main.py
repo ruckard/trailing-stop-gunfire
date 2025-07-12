@@ -183,7 +183,7 @@ def update_position(pid, info, symbol):
             opening_price=excluded.opening_price,
             trail_value=excluded.trail_value,
             symbol=excluded.symbol
-    ''', (pid, info['position_id'], info['opening_order_id'], info['closing_order_id'], info['side'], info['callback'], bool_to_int(info['active']), opening_price, trail_value, symbol))
+    ''', (pid, info['position_id'], info['opening_order_id'], info['closing_order_id'], info['side'], float(info['callback']), bool_to_int(info['active']), opening_price, trail_value, symbol))
     conn.commit()
     conn.close()
 
