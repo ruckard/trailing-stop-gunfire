@@ -448,7 +448,8 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
         if not current_price:
             print_with_date("[ERROR] Failed to get current price.")
             return None, None, None, None, None
-        trail_value = round(current_price * (callback_rate / 100), 2)
+        callback_rate_float = float(callback_rate)
+        trail_value = round(current_price * (callback_rate_float / 100), 2)
 
         side = "BUY" if position_side == "SHORT" else "SELL"  # Closing side
         market_side = "SELL" if position_side == "SHORT" else "BUY"  # Entry side
