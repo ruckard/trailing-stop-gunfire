@@ -30,3 +30,5 @@ EXCLUDED_SYMBOLS = [
 ADDITIONAL_SYMBOLS = [
     # "SOL-PERP",  # Example: force-include this one
 ]
+
+# TOP_SYMBOLS_BY_VOLUME = 10 # Optional: How many top-volume symbols to fetch. Default: 5
