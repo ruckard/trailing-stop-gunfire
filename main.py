@@ -726,7 +726,8 @@ def check_positions(symbol):
 
             if is_win_from_trade(pnl):
                 print_with_date(f"[WIN] Reopening {symbol} {pid}")
-                new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], SYMBOL_CONFIGS[symbol]["CONTRACTS"])
+                contracts = CONTRACTS_MAP.get(symbol, 1)
+                new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
                 if new_pos_id and new_closing_order_id:
                     positions[symbol][pid] = {
                         "position_id": new_pos_id,
@@ -744,7 +745,8 @@ def check_positions(symbol):
                     continue
             elif pnl is not None and is_breakeven_from_trade(symbol, info, closing_price):
                 print_with_date(f"[BREAKEVEN] Reopening {symbol} {pid}")
-                new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], SYMBOL_CONFIGS[symbol]["CONTRACTS"])
+                contracts = CONTRACTS_MAP.get(symbol, 1)
+                new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
                 if new_pos_id and new_closing_order_id:
                     positions[symbol][pid] = {
                         "position_id": new_pos_id,
@@ -776,7 +778,8 @@ def check_positions(symbol):
             pnl = trade.get("total") if trade else None
             if pnl is not None and is_win_from_trade(pnl):
                 print_with_date(f"[WIN] Reopening {symbol} {pid}")
-                new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], SYMBOL_CONFIGS[symbol]["CONTRACTS"])
+                contracts = CONTRACTS_MAP.get(symbol, 1)
+                new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
                 if new_pos_id and new_closing_order_id:
                     positions[symbol][pid] = {
                         "position_id": new_pos_id,
@@ -794,7 +797,8 @@ def check_positions(symbol):
                     continue
             elif pnl is not None and is_breakeven_from_trade(symbol, info, closing_price):
                 print_with_date(f"[BREAKEVEN] Reopening {symbol} {pid}")
-                new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], SYMBOL_CONFIGS[symbol]["CONTRACTS"])
+                contracts = CONTRACTS_MAP.get(symbol, 1)
+                new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
                 if new_pos_id and new_closing_order_id:
                     positions[symbol][pid] = {
                         "position_id": new_pos_id,
