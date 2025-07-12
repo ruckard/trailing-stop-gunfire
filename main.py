@@ -402,7 +402,9 @@ def update_trailing_stops_for_symbol(symbol):
         print_with_date(f"[ERROR] Could not calculate trailing start for {symbol}")
         return
 
+    trailing_start = Decimal(str(trailing_start))  # Ensure Decimal type
     step_multiplier = Decimal(str(cfg.get("TRAILING_STEP_MULTIPLIER", TRAILING_STEP_MULTIPLIER_DEFAULT)))
+
     trailing_step = trailing_start * step_multiplier
     trailing_count = cfg.get("TRAILING_COUNT", TRAILING_COUNT_DEFAULT)
 
