@@ -22,3 +22,11 @@ SYMBOL_CONFIGS = {
 }
 
 API_DELAY_MS = 500          # Delay (in milliseconds) between API requests
+
+EXCLUDED_SYMBOLS = [
+    # "XRP-PERP",  # Example: skip this one
+]
+
+ADDITIONAL_SYMBOLS = [
+    # "SOL-PERP",  # Example: force-include this one
+]

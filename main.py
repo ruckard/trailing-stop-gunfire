@@ -218,6 +218,9 @@ DEFAULT_SYMBOL_CONFIGS = {
 TRAILING_STEP_MULTIPLIER_DEFAULT = 0.375  # default global value
 TRAILING_COUNT_DEFAULT = 2
 
+DEFAULT_ADDITIONAL_SYMBOLS = []
+DEFAULT_EXCLUDED_SYMBOLS = []
+
 DEFAULT_API_DELAY_MS = 500  # Default 500ms between API requests
 
 # === Check if override_config.py exists and load values if present ===
@@ -229,15 +232,77 @@ if os.path.exists('override_config.py'):
 else:
     OV_SYMBOL_CONFIGS = OV_API_DELAY_MS = None
 
+try:
+    from override_config import TOP_SYMBOLS_BY_VOLUME as OV_TOP_SYMBOLS_BY_VOLUME
+except ImportError:
+    OV_TOP_SYMBOLS_BY_VOLUME = None
+
+try:
+    from override_config import ADDITIONAL_SYMBOLS as OV_ADDITIONAL_SYMBOLS
+except ImportError:
+    OV_ADDITIONAL_SYMBOLS = []
+
+try:
+    from override_config import EXCLUDED_SYMBOLS as OV_EXCLUDED_SYMBOLS
+except ImportError:
+    OV_EXCLUDED_SYMBOLS = []
+
 # === Final Config Values (Override if provided) ===
 SYMBOL_CONFIGS = OV_SYMBOL_CONFIGS if OV_SYMBOL_CONFIGS is not None else DEFAULT_SYMBOL_CONFIGS
 API_DELAY_MS = OV_API_DELAY_MS if OV_API_DELAY_MS is not None else DEFAULT_API_DELAY_MS
+TOP_SYMBOLS_BY_VOLUME = OV_TOP_SYMBOLS_BY_VOLUME if OV_TOP_SYMBOLS_BY_VOLUME is not None else TOP_SYMBOLS_BY_VOLUME_DEFAULT
+ADDITIONAL_SYMBOLS = OV_ADDITIONAL_SYMBOLS if OV_ADDITIONAL_SYMBOLS is not None else DEFAULT_ADDITIONAL_SYMBOLS
+EXCLUDED_SYMBOLS = OV_EXCLUDED_SYMBOLS if OV_EXCLUDED_SYMBOLS is not None else DEFAULT_EXCLUDED_SYMBOLS
+
+CONTRACTS_MAP = {}
 
 CONTRACT_SIZES = {
     "BTC-PERP": 0.00001,
     "ETH-PERP": 0.0001,
     # Add others as needed
 }
+
+def fetch_top_symbols_by_volume(limit=5):
+    try:
+        url = f"{BASE_URL}/api/v2.2/market_summary"
+        params = {"listFullAttributes": "true"}
+        response = throttled_request("GET", url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        if not data:
+            print_with_date("[ERROR] No data received from market_summary.")
+            return []
+
+        # Sort by 24h volume descending
+        sorted_data = sorted(
+            data,
+            key=lambda m: m.get("volume", 0),
+            reverse=True
+        )
+
+        # Extract top symbols
+        top_symbols = [m["symbol"] for m in sorted_data if m.get("symbol") and m.get("volume") > 0]
+
+        return top_symbols[:limit]
+
+    except Exception as e:
+        print_with_date(f"[ERROR] Failed to fetch top volume symbols: {e}")
+        return []
+
+def get_final_symbol_list():
+    top_symbols = fetch_top_symbols_by_volume(limit=5)
+
+    # Include additional symbols
+    combined = top_symbols + ADDITIONAL_SYMBOLS
+
+    # Remove excluded symbols and deduplicate while preserving order
+    seen = set()
+    final = []
+    for s in combined:
+        if s not in EXCLUDED_SYMBOLS and s not in seen:
+            final.append(s)
+            seen.add(s)
+    return final
 
 def fetch_contract_sizes(symbols):
     contract_sizes = {}
@@ -832,14 +897,15 @@ def run_main_loop():
 
     # TODO: Save the contract map values in a second table
     # So that they can be used when the trades are resumed and some of them are still on.
-    symbols = list(SYMBOL_CONFIGS.keys())
+    symbols = get_final_symbol_list()
+    print_with_date(f"[SYMBOLS] Final trading symbols: {symbols}")
     contract_sizes = fetch_contract_sizes(symbols)
     CONTRACTS_MAP = compute_contracts_from_prices(symbols, contract_sizes)
 
     print_with_date(f"[CONTRACT_SIZES] {contract_sizes}")
     print_with_date(f"[CONTRACTS_MAP] {CONTRACTS_MAP}")
 
-    for symbol in SYMBOL_CONFIGS:
+    for symbol in symbols:
         if symbol not in positions:
             positions[symbol] = {}
         load_positions(symbol)
@@ -858,7 +924,7 @@ def run_main_loop():
             print("C", end='',flush=True)
             check_sleep_start=False
             time.sleep(1)
-            for symbol in SYMBOL_CONFIGS:
+            for symbol in symbols:
                 all_closed = check_positions(symbol)
                 if all_closed:
                     update_trailing_stops_for_symbol(symbol)
