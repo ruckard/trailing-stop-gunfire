@@ -10,12 +10,12 @@
 
 SYMBOL_CONFIGS = {
     "BTC-PERP": {
-        "TRAILING_COUNT": 2,
+        # "TRAILING_COUNT": 3, Optional: 3 trailing orders. Default: 2
         # "SYMBOL_MULTIPLIER": 2.0  # Optional: double exposure. Default: 1.0
         # "TRAILING_STEP_MULTIPLIER": 0.33, # Optional: Step is going to be 33.0% of calculated trailing start. Default: 0.375
     },
     "ETH-PERP": {
-        "TRAILING_COUNT": 2,
+        # "TRAILING_COUNT": 3, Optional: 3 trailing orders. Default: 2
         # "SYMBOL_MULTIPLIER": 2.0  # Optional: double exposure. Default: 1.0
         # "TRAILING_STEP_MULTIPLIER": 0.33, # Optional: Step is going to be 33.0% of calculated trailing start. Default: 0.375
     }
