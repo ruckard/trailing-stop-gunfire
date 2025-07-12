@@ -257,12 +257,6 @@ EXCLUDED_SYMBOLS = OV_EXCLUDED_SYMBOLS if OV_EXCLUDED_SYMBOLS is not None else D
 
 CONTRACTS_MAP = {}
 
-CONTRACT_SIZES = {
-    "BTC-PERP": 0.00001,
-    "ETH-PERP": 0.0001,
-    # Add others as needed
-}
-
 def fetch_top_symbols_by_volume(limit=5):
     try:
         url = f"{BASE_URL}/api/v2.2/market_summary"
