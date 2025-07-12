@@ -257,6 +257,7 @@ EXCLUDED_SYMBOLS = OV_EXCLUDED_SYMBOLS if OV_EXCLUDED_SYMBOLS is not None else D
 
 CONTRACTS_MAP = {}
 CONTRACT_SIZES = {}
+MIN_PRICE_INCREMENTS = {}
 
 def fetch_top_symbols_by_volume(limit=5):
     try:
@@ -331,6 +332,36 @@ def fetch_contract_sizes(symbols):
         print_with_date("[ERROR] No contract sizes could be determined.")
     return contract_sizes
 
+def fetch_min_price_increments(symbols):
+    min_price_increments = {}
+    for symbol in symbols:
+        try:
+            url = f"{BASE_URL}/api/v2.2/market_summary"
+            params = {
+                "symbol": symbol,
+                "listFullAttributes": "true"
+            }
+            response = throttled_request("GET", url, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            if not data:
+                print_with_date(f"[WARN] No market data returned for {symbol}")
+                continue
+
+            market = data[0] if isinstance(data, list) else data
+            min_price_increment = market.get("minPriceIncrement")
+            if min_price_increment and Decimal(str(min_price_increment)) > 0:
+                min_price_increments[symbol] = Decimal(str(min_price_increment))
+            else:
+                print_with_date(f"[WARN] No valid minPriceIncrement for {symbol}")
+
+        except Exception as e:
+            print_with_date(f"[ERROR] Failed to fetch contract size for {symbol}: {e}")
+
+    if not min_price_increments:
+        print_with_date("[ERROR] No contract sizes could be determined.")
+    return min_price_increments
 
 def compute_contracts_from_prices(symbols, contract_sizes):
     prices = {}
@@ -438,7 +469,7 @@ def get_current_price(symbol):
 
 # === Place Trailing Stop Order on BTSE ===
 def place_trailing_stop(symbol, position_side, callback_rate, contracts):
-    global CONTRACT_SIZES
+    global MIN_PRICE_INCREMENTS
     try:
         current_price = get_current_price(symbol)
         if not current_price:
@@ -446,11 +477,11 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
             return None, None, None, None, None
         callback_rate_float = float(callback_rate)
 
-        contract_size = CONTRACT_SIZES.get(symbol)
-        if not contract_size:
-            raise ValueError(f"No contract size found for {symbol}")
+        min_price_increment = MIN_PRICE_INCREMENTS.get(symbol)
+        if not min_price_increment:
+            raise ValueError(f"No min price increment found for {symbol}")
 
-        precision = abs(Decimal(str(contract_size)).as_tuple().exponent)
+        precision = abs(Decimal(str(min_price_increment)).as_tuple().exponent)
         trail_value = round(current_price * (callback_rate_float / 100), precision)
 
         side = "BUY" if position_side == "SHORT" else "SELL"  # Closing side
@@ -907,6 +938,8 @@ def run_main_loop():
     print_with_date(f"[SYMBOLS] Final trading symbols: {symbols}")
     global CONTRACT_SIZES
     CONTRACT_SIZES = fetch_contract_sizes(symbols)
+    global MIN_PRICE_INCREMENTS
+    MIN_PRICE_INCREMENTS = fetch_min_price_increments(symbols)
     global CONTRACTS_MAP
     CONTRACTS_MAP = compute_contracts_from_prices(symbols, CONTRACT_SIZES)
 
