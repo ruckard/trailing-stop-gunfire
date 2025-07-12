@@ -217,6 +217,7 @@ DEFAULT_SYMBOL_CONFIGS = {
 
 TRAILING_STEP_MULTIPLIER_DEFAULT = 0.375  # default global value
 TRAILING_COUNT_DEFAULT = 2
+TOP_SYMBOLS_BY_VOLUME_DEFAULT = 5
 
 DEFAULT_ADDITIONAL_SYMBOLS = []
 DEFAULT_EXCLUDED_SYMBOLS = []
@@ -290,7 +291,7 @@ def fetch_top_symbols_by_volume(limit=5):
         return []
 
 def get_final_symbol_list():
-    top_symbols = fetch_top_symbols_by_volume(limit=5)
+    top_symbols = fetch_top_symbols_by_volume(limit=TOP_SYMBOLS_BY_VOLUME)
 
     # Include additional symbols
     combined = top_symbols + ADDITIONAL_SYMBOLS
