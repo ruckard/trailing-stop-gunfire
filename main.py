@@ -257,6 +257,8 @@ EXCLUDED_SYMBOLS = OV_EXCLUDED_SYMBOLS if OV_EXCLUDED_SYMBOLS is not None else D
 
 CONTRACTS_MAP = {}
 
+CONTRACTS_MAP = {}
+
 CONTRACT_SIZES = {
     "BTC-PERP": 0.00001,
     "ETH-PERP": 0.0001,
@@ -723,6 +725,7 @@ positions = {}
 
 # === Place All Positions ===
 def place_all_positions(symbol):
+    global CONTRACTS_MAP
     print_with_date(f"[STARTING NEW {symbol} CYCLE]")
     positions[symbol].clear()
     clear_positions(symbol)
@@ -752,6 +755,7 @@ def place_all_positions(symbol):
 
 # === Check and Manage Positions ===
 def check_positions(symbol):
+    global CONTRACTS_MAP
     all_closed = True
     for pid, info in positions[symbol].items():
         debug(f"[check_positions] Checking... {symbol} {pid}")
@@ -800,6 +804,7 @@ def check_positions(symbol):
 
             if is_win_from_trade(pnl):
                 print_with_date(f"[WIN] Reopening {symbol} {pid}")
+                global CONTRACTS_MAP
                 contracts = CONTRACTS_MAP.get(symbol, 1)
                 new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
                 if new_pos_id and new_closing_order_id:
@@ -901,6 +906,7 @@ def run_main_loop():
     symbols = get_final_symbol_list()
     print_with_date(f"[SYMBOLS] Final trading symbols: {symbols}")
     contract_sizes = fetch_contract_sizes(symbols)
+    global CONTRACTS_MAP
     CONTRACTS_MAP = compute_contracts_from_prices(symbols, contract_sizes)
 
     print_with_date(f"[CONTRACT_SIZES] {contract_sizes}")
