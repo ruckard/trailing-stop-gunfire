@@ -216,6 +216,7 @@ DEFAULT_SYMBOL_CONFIGS = {
 }
 
 TRAILING_STEP_MULTIPLIER_DEFAULT = 0.375  # default global value
+TRAILING_COUNT_DEFAULT = 2
 
 DEFAULT_API_DELAY_MS = 500  # Default 500ms between API requests
 
@@ -317,7 +318,7 @@ def build_trailing_stops_map():
         trailing_start_decimal = Decimal(str(trailing_start))
         step_multiplier = Decimal(str(cfg.get("TRAILING_STEP_MULTIPLIER", TRAILING_STEP_MULTIPLIER_DEFAULT)))
         trailing_step = trailing_start_decimal * step_multiplier
-        trailing_count = cfg["TRAILING_COUNT"]
+        trailing_count = cfg.get("TRAILING_COUNT", TRAILING_COUNT_DEFAULT)
 
         result[symbol] = [
             float(round(trailing_start_decimal + i * trailing_step, 8))
