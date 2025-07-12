@@ -398,9 +398,6 @@ TRAILING_STOPS_MAP = build_trailing_stops_map()
 
 def update_trailing_stops_for_symbol(symbol):
     cfg = SYMBOL_CONFIGS.get(symbol, {})
-    if not cfg:
-        print_with_date(f"[ERROR] No config found for symbol: {symbol}")
-        return
 
     trailing_start = calculate_trailing_start_from_atr(symbol)
     if trailing_start is None:
