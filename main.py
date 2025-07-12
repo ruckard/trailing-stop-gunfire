@@ -397,7 +397,7 @@ def build_trailing_stops_map():
 TRAILING_STOPS_MAP = build_trailing_stops_map()
 
 def update_trailing_stops_for_symbol(symbol):
-    cfg = SYMBOL_CONFIGS.get(symbol)
+    cfg = SYMBOL_CONFIGS.get(symbol, {})
     if not cfg:
         print_with_date(f"[ERROR] No config found for symbol: {symbol}")
         return
@@ -409,7 +409,7 @@ def update_trailing_stops_for_symbol(symbol):
 
     step_multiplier = Decimal(str(cfg.get("TRAILING_STEP_MULTIPLIER", TRAILING_STEP_MULTIPLIER_DEFAULT)))
     trailing_step = trailing_start * step_multiplier
-    trailing_count = cfg.get("TRAILING_COUNT")
+    trailing_count = cfg.get("TRAILING_COUNT", TRAILING_COUNT_DEFAULT)
 
     TRAILING_STOPS_MAP[symbol] = [
         round(trailing_start + i * trailing_step, 2)
