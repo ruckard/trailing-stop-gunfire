@@ -215,6 +215,8 @@ DEFAULT_SYMBOL_CONFIGS = {
     }
 }
 
+TRAILING_STEP_MULTIPLIER_DEFAULT = 0.375  # default global value
+
 DEFAULT_API_DELAY_MS = 500  # Default 500ms between API requests
 
 # === Check if override_config.py exists and load values if present ===
@@ -311,10 +313,14 @@ def build_trailing_stops_map():
         trailing_start = calculate_trailing_start_from_atr(symbol)
         if trailing_start is None:
             continue  # or raise/log error
-        trailing_step = trailing_start * cfg["TRAILING_STEP_MULTIPLIER"]
+
+        trailing_start_decimal = Decimal(str(trailing_start))
+        step_multiplier = Decimal(str(cfg.get("TRAILING_STEP_MULTIPLIER", TRAILING_STEP_MULTIPLIER_DEFAULT)))
+        trailing_step = trailing_start_decimal * step_multiplier
         trailing_count = cfg["TRAILING_COUNT"]
+
         result[symbol] = [
-            round(trailing_start + i * trailing_step, 2)
+            float(round(trailing_start_decimal + i * trailing_step, 8))
             for i in range(trailing_count)
         ]
     return result
@@ -332,7 +338,8 @@ def update_trailing_stops_for_symbol(symbol):
         print_with_date(f"[ERROR] Could not calculate trailing start for {symbol}")
         return
 
-    trailing_step = trailing_start * cfg.get("TRAILING_STEP_MULTIPLIER")
+    step_multiplier = Decimal(str(cfg.get("TRAILING_STEP_MULTIPLIER", TRAILING_STEP_MULTIPLIER_DEFAULT)))
+    trailing_step = trailing_start * step_multiplier
     trailing_count = cfg.get("TRAILING_COUNT")
 
     TRAILING_STOPS_MAP[symbol] = [
