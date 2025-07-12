@@ -256,6 +256,7 @@ ADDITIONAL_SYMBOLS = OV_ADDITIONAL_SYMBOLS if OV_ADDITIONAL_SYMBOLS is not None 
 EXCLUDED_SYMBOLS = OV_EXCLUDED_SYMBOLS if OV_EXCLUDED_SYMBOLS is not None else DEFAULT_EXCLUDED_SYMBOLS
 
 CONTRACTS_MAP = {}
+CONTRACT_SIZES = {}
 
 def fetch_top_symbols_by_volume(limit=5):
     try:
@@ -437,13 +438,20 @@ def get_current_price(symbol):
 
 # === Place Trailing Stop Order on BTSE ===
 def place_trailing_stop(symbol, position_side, callback_rate, contracts):
+    global CONTRACT_SIZES
     try:
         current_price = get_current_price(symbol)
         if not current_price:
             print_with_date("[ERROR] Failed to get current price.")
             return None, None, None, None, None
         callback_rate_float = float(callback_rate)
-        trail_value = round(current_price * (callback_rate_float / 100), 2)
+
+        contract_size = CONTRACT_SIZES.get(symbol)
+        if not contract_size:
+            raise ValueError(f"No contract size found for {symbol}")
+
+        precision = abs(Decimal(str(contract_size)).as_tuple().exponent)
+        trail_value = round(current_price * (callback_rate_float / 100), precision)
 
         side = "BUY" if position_side == "SHORT" else "SELL"  # Closing side
         market_side = "SELL" if position_side == "SHORT" else "BUY"  # Entry side
@@ -897,11 +905,12 @@ def run_main_loop():
     # So that they can be used when the trades are resumed and some of them are still on.
     symbols = get_final_symbol_list()
     print_with_date(f"[SYMBOLS] Final trading symbols: {symbols}")
-    contract_sizes = fetch_contract_sizes(symbols)
+    global CONTRACT_SIZES
+    CONTRACT_SIZES = fetch_contract_sizes(symbols)
     global CONTRACTS_MAP
-    CONTRACTS_MAP = compute_contracts_from_prices(symbols, contract_sizes)
+    CONTRACTS_MAP = compute_contracts_from_prices(symbols, CONTRACT_SIZES)
 
-    print_with_date(f"[CONTRACT_SIZES] {contract_sizes}")
+    print_with_date(f"[CONTRACT_SIZES] {CONTRACT_SIZES}")
     print_with_date(f"[CONTRACTS_MAP] {CONTRACTS_MAP}")
 
     for symbol in symbols:
