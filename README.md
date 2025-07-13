@@ -9,6 +9,14 @@ It keeps re-opening trailing stops that do end in a win trade.
 
 Copy `config.py.sample` as `config.py` and edit it to use your own BTSE futures keys.
 
+You want all the symbols (The 20 symbols with most volume) to be setup like this:
+
+- Isolated mode ( No cross mode )
+- Position Mode: Multiple Mode ( No one-way mode )
+- Leverage: 1x
+
+You can use `python symbols_setup.py` for doing that in an automatic way.
+
 ## Usage
 
 Just run:
