@@ -19,10 +19,10 @@ def api_lock_acquire_lock(client_id):
     while True:
         result = api_lock_send_command("LOCK", client_id)
         if result == "GRANTED":
-            print(f"[Client:{client_id}] Lock acquired.")
+            #print(f"[Client:{client_id}] Lock acquired.")
             return
         elif result == "WAIT":
-            print(f"[Client:{client_id}] Waiting for lock...")
+            #print(f"[Client:{client_id}] Waiting for lock...")
             time.sleep(0.5)
         else:
             print(f"[Client:{client_id}] Unexpected response: {result}")
@@ -30,4 +30,4 @@ def api_lock_acquire_lock(client_id):
 
 def api_lock_release_lock(client_id):
     result = api_lock_send_command("RELEASE", client_id)
-    print(f"[Client:{client_id}] Released lock: {result}")
+    #print(f"[Client:{client_id}] Released lock: {result}")
