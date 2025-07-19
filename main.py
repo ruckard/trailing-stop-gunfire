@@ -10,21 +10,26 @@ from decimal import Decimal, getcontext, ROUND_FLOOR
 import traceback
 import pandas as pd
 
+from contextlib import contextmanager
+from api_lock_client import api_lock_acquire_lock, api_lock_release_lock
+
 class PriceFetchError(Exception):
     """Raised when the current price could not be fetched from the API."""
     pass
 
 getcontext().prec = 16
 
-# === Request Throttling ===
-_last_request_time = 0
+@contextmanager
+def lock_guard(client_id):
+    api_lock_acquire_lock(client_id)
+    try:
+        yield
+    finally:
+        api_lock_release_lock(client_id)
+
 def throttled_request(method, url, **kwargs):
-    global _last_request_time
-    elapsed = (time.time() - _last_request_time) * 1000  # convert to ms
-    if elapsed < API_DELAY_MS:
-        time.sleep((API_DELAY_MS - elapsed) / 1000)
-    _last_request_time = time.time()
-    return requests.request(method, url, timeout=30, **kwargs)
+    with lock_guard("ClientA"):
+        return requests.request(method, url, timeout=30, **kwargs)
 
 def fetch_4h_ohlcv(symbol, limit=100):
     url = f"{BASE_URL}/api/v2.2/ohlcv"
