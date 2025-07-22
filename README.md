@@ -17,6 +17,8 @@ You want all the symbols (The 20 symbols with most volume) to be setup like this
 
 You can use `python symbols_setup.py` for doing that in an automatic way.
 
+You can optionally copy `override_config.py.sample` as `override_config.py` and edit it to your needs.
+
 ## Usage
 
 Just run:
