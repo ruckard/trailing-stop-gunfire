@@ -7,7 +7,12 @@ It keeps re-opening trailing stops that do end in a win trade.
 
 ## Setup
 
+### Configuration
+
 Copy `config.py.sample` as `config.py` and edit it to use your own BTSE futures keys.
+You can optionally copy `override_config.py.sample` as `override_config.py` and edit it to your needs.
+
+### BTSE Charts Setup
 
 You want all the symbols (The 20 symbols with most volume) to be setup like this:
 
@@ -17,7 +22,6 @@ You want all the symbols (The 20 symbols with most volume) to be setup like this
 
 You can use `python symbols_setup.py` for doing that in an automatic way.
 
-You can optionally copy `override_config.py.sample` as `override_config.py` and edit it to your needs.
 
 ## Usage
 
