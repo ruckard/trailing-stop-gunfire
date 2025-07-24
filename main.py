@@ -89,7 +89,7 @@ def calculate_trailing_start_from_atr(symbol, multiplier=0.34):
     df = fetch_4h_ohlcv(symbol)
     if df is None:
         return None
-    atr = calculate_atr(df)
+    atr = calculate_atr(df, ma_period=48, ma='HIGHEST')
     last_close = df['close'].iloc[-1]
     atr_percent = (atr / last_close) * 100
     trailing_start = round(atr_percent * multiplier, 2)
