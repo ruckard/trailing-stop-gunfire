@@ -50,7 +50,7 @@ def fetch_4h_ohlcv(symbol, limit=100):
     df = pd.DataFrame(data, columns=["timestamp", "open", "high", "low", "close", "volume"])
     return df
 
-def calculate_atr(df, period=14, ma='SMA', ma_period=None):
+def calculate_atr(df, period=14, ma='SMA', ma_period=48):
     """
     Calculate the Average True Range (ATR) using specified moving average method.
 
@@ -89,7 +89,7 @@ def calculate_trailing_start_from_atr(symbol, multiplier=2.125, ma='HIGHEST', ma
     df = fetch_4h_ohlcv(symbol)
     if df is None:
         return None
-    atr = calculate_atr(df, ma_period=ma_period, ma=ma)
+    atr = calculate_atr(df, ma_period=ATR_MA_PERIOD, ma=ma)
     last_close = df['close'].iloc[-1]
     atr_percent = (atr / last_close) * 100
     trailing_start = round(atr_percent * multiplier, 2)
