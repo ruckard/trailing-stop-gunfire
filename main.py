@@ -50,12 +50,39 @@ def fetch_4h_ohlcv(symbol, limit=100):
     df = pd.DataFrame(data, columns=["timestamp", "open", "high", "low", "close", "volume"])
     return df
 
-def calculate_atr(df, period=14):
+def calculate_atr(df, period=14, ma='SMA', ma_period=None):
+    """
+    Calculate the Average True Range (ATR) using specified moving average method.
+
+    Args:
+        df (pd.DataFrame): DataFrame containing 'high', 'low', and 'close' columns.
+        period (int): The period for True Range calculation (typically 14).
+        ma (str): Type of moving average - 'SMA', 'EMA', 'RMA', or 'Highest'.
+        ma_period (int): The period for the moving average (default is same as `period`).
+
+    Returns:
+        float: The latest ATR value.
+    """
+    if ma_period is None:
+        ma_period = period
+
     df['H-L'] = df['high'] - df['low']
     df['H-PC'] = abs(df['high'] - df['close'].shift(1))
     df['L-PC'] = abs(df['low'] - df['close'].shift(1))
     df['TR'] = df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
-    df['ATR'] = df['TR'].rolling(window=period).mean()
+
+    ma = ma.upper()
+    if ma == 'SMA':
+        df['ATR'] = df['TR'].rolling(window=ma_period).mean()
+    elif ma == 'EMA':
+        df['ATR'] = df['TR'].ewm(span=ma_period, adjust=False).mean()
+    elif ma == 'RMA':
+        df['ATR'] = df['TR'].ewm(alpha=1 / ma_period, adjust=False).mean()
+    elif ma == 'HIGHEST':
+        df['ATR'] = df['TR'].rolling(window=ma_period).max()
+    else:
+        raise ValueError("Invalid ma type. Use 'SMA', 'EMA', 'RMA', or 'Highest'.")
+
     return df['ATR'].iloc[-1]
 
 def calculate_trailing_start_from_atr(symbol, multiplier=0.34):
