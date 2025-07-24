@@ -23,6 +23,8 @@ SYMBOL_CONFIGS = {
 
 API_DELAY_MS = 500          # Delay (in milliseconds) between API requests
 
+ATR_MA_PERIOD = 48 # ATR Moving Average period
+
 EXCLUDED_SYMBOLS = [
     # "XRP-PERP",  # Example: skip this one
 ]
