@@ -36,7 +36,7 @@ def fetch_4h_ohlcv(symbol, limit=100):
     end_time = int(time.time() * 1000)  # current timestamp in ms
     params = {
         'symbol': symbol,
-        'resolution': '240',  # 4h candles
+        'resolution': '5',  # 5m candles
         'end': end_time,
     }
     response = throttled_request("GET", url, params=params)
