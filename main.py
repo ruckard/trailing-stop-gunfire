@@ -85,15 +85,15 @@ def calculate_atr(df, period=14, ma='SMA', ma_period=None):
 
     return df['ATR'].iloc[-1]
 
-def calculate_trailing_start_from_atr(symbol, multiplier=0.34):
+def calculate_trailing_start_from_atr(symbol, multiplier=2.125, ma='HIGHEST', ma_period=48):
     df = fetch_4h_ohlcv(symbol)
     if df is None:
         return None
-    atr = calculate_atr(df, ma_period=48, ma='HIGHEST')
+    atr = calculate_atr(df, ma_period=ma_period, ma=ma)
     last_close = df['close'].iloc[-1]
     atr_percent = (atr / last_close) * 100
     trailing_start = round(atr_percent * multiplier, 2)
-    print_with_date(f"[ATR] {symbol} ATR(14) = {atr:.2f}, % = {atr_percent:.2f}, TRAILING_START = {trailing_start}%")
+    print_with_date(f"[ATR] {symbol} {ma}(ATR(ma_period)) = {atr:.2f}, % = {atr_percent:.2f}, TRAILING_START = {trailing_start}%")
     return trailing_start
 
 # === DEBUG MODE ===
