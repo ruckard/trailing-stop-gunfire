@@ -50,6 +50,16 @@ def fetch_4h_ohlcv(symbol, limit=100):
     df = pd.DataFrame(data, columns=["timestamp", "open", "high", "low", "close", "volume"])
     return df
 
+def calculate_ema_trend_score(symbol, lookback=50):
+    df = fetch_4h_ohlcv(symbol)  # currently returns 5m candles
+    if df is None or len(df) < lookback:
+        return 0
+
+    df['ema'] = df['close'].ewm(span=lookback, adjust=False).mean()
+    # Slope = difference between last EMA and EMA N bars ago
+    slope = df['ema'].iloc[-1] - df['ema'].iloc[-lookback]
+    return slope
+
 def calculate_atr(df, period=14, ma='SMA', ma_period=48):
     """
     Calculate the Average True Range (ATR) using specified moving average method.
@@ -335,6 +345,37 @@ def get_final_symbol_list():
             final.append(s)
             seen.add(s)
     return final
+
+def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_type='EMA'):
+    """
+    Rank and filter symbols based on a trend score.
+
+    Args:
+        long_top_number (int): Number of top long symbols to select.
+        short_top_number (int): Number of top short symbols to select.
+        rank_type (str): Type of ranking metric to use ('EMA' supported for now).
+
+    Returns:
+        tuple: (symbols, long_symbols, short_symbols)
+    """
+
+    trend_scores = {}
+    for symbol in symbols:
+        if rank_type == 'EMA':
+            score = calculate_ema_trend_score(symbol)
+        else:
+            raise ValueError(f"Unsupported rank_type: {rank_type}")
+        trend_scores[symbol] = score
+
+    # Sort symbols by score for long/short
+    sorted_symbols = sorted(trend_scores.items(), key=lambda x: x[1], reverse=True)
+
+    long_symbols = [s for s, score in sorted_symbols if score > 0][:long_top_number]
+    short_symbols = [s for s, score in sorted(trend_scores.items(), key=lambda x: x[1]) if score < 0][:short_top_number]
+
+    final_symbols = long_symbols + short_symbols
+
+    return final_symbols, long_symbols, short_symbols
 
 def fetch_contract_sizes(symbols):
     contract_sizes = {}
@@ -790,14 +831,14 @@ def is_breakeven_from_trade(symbol, info, closing_price):
 positions = {}
 
 # === Place All Positions ===
-def place_all_positions(symbol):
+def place_all_positions(symbol, sides=("LONG", "SHORT")):
     global CONTRACTS_MAP
     print_with_date(f"[STARTING NEW {symbol} CYCLE]")
     positions[symbol].clear()
     clear_positions(symbol)
     for i, callback in enumerate(TRAILING_STOPS_MAP[symbol]):
         #for side in ["LONG"]:
-        for side in ["LONG", "SHORT"]:
+        for side in sides:
             pid = f"{side.lower()}-{i}"
             contracts = CONTRACTS_MAP.get(symbol, 1)
             result = place_trailing_stop(symbol, side, callback, contracts)
@@ -970,7 +1011,17 @@ def run_main_loop():
     # TODO: Save the contract map values in a second table
     # So that they can be used when the trades are resumed and some of them are still on.
     symbols = get_final_symbol_list()
-    print_with_date(f"[SYMBOLS] Final trading symbols: {symbols}")
+    print_with_date(f"[SYMBOLS] (Pre-selected) Trading symbols: {symbols}")
+
+    symbols, long_symbols, short_symbols = filter_symbols_by_rank(
+        symbols,
+        long_top_number=3,
+        short_top_number=3,
+        rank_type='EMA'
+    )
+
+    print_with_date(f"[SYMBOLS] Selected LONG: {long_symbols} | SHORT: {short_symbols}")
+
     global CONTRACT_SIZES
     CONTRACT_SIZES = fetch_contract_sizes(symbols)
     global MIN_PRICE_INCREMENTS
@@ -987,7 +1038,10 @@ def run_main_loop():
         load_positions(symbol)
         if not positions[symbol]:
             update_trailing_stops_for_symbol(symbol)
-            place_all_positions(symbol)
+            if symbol in long_symbols:
+                place_all_positions(symbol, sides=("LONG",))
+            elif symbol in short_symbols:
+                place_all_positions(symbol, sides=("SHORT",))
         else:
             show_positions(symbol)
 
@@ -1005,7 +1059,10 @@ def run_main_loop():
                 if all_closed:
                     update_trailing_stops_for_symbol(symbol)
                     print_with_date(f"[{symbol}] [ALL CLOSED] Restarting cycle.")
-                    place_all_positions(symbol)
+                    if symbol in long_symbols:
+                        place_all_positions(symbol, sides=("LONG",))
+                    elif symbol in short_symbols:
+                        place_all_positions(symbol, sides=("SHORT",))
         except requests.exceptions.RequestException as e:
             print_with_date(f"[NETWORK ERROR] {e}. Retrying in 5 minutes.")
         except Exception as e:
