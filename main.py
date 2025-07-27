@@ -995,6 +995,8 @@ def check_positions(symbol):
 
             if not trade:
                 print_with_date(f"[ERROR] No closing trade found for order_id {info['closing_order_id']}")
+                info["active"] = False
+                update_position(pid, info, symbol)
                 continue
             pnl1 = Decimal(str(trade.get("total")))
 
