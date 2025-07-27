@@ -162,6 +162,7 @@ def init_db():
             opening_price TEXT,
             trail_value REAL,
             symbol TEXT,
+            opened_at REAL,
             PRIMARY KEY (pid, symbol)
         )
     ''')
@@ -181,10 +182,10 @@ def show_positions(symbol):
 def load_positions(symbol):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute(f"SELECT pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value FROM positions WHERE symbol = \"{symbol}\"")
+    c.execute(f"SELECT pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, opened_at FROM positions WHERE symbol = \"{symbol}\"")
     rows = c.fetchall()
     conn.close()
-    for pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value in rows:
+    for pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, opened_at in rows:
         positions[symbol][pid] = {
             "position_id": position_id,
             "opening_order_id": opening_order_id,
@@ -193,6 +194,7 @@ def load_positions(symbol):
             "callback": callback,
             "active": int_to_bool(active),
             "trail_value": trail_value,
+            "opened_at": opened_at,
         }
 
 def update_position(pid, info, symbol):
@@ -210,11 +212,17 @@ def update_position(pid, info, symbol):
     else:
         trail_value = info["trail_value"]
 
+    # Undefined opened_at workaround
+    if "opened_at" not in info:
+        opened_at = time.time()
+    else:
+        opened_at = info["opened_at"]
+
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''
-        INSERT INTO positions (pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, symbol)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO positions (pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, symbol, opened_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(pid, symbol) DO UPDATE SET
             position_id=excluded.position_id,
             opening_order_id=excluded.opening_order_id,
@@ -224,8 +232,9 @@ def update_position(pid, info, symbol):
             active=excluded.active,
             opening_price=excluded.opening_price,
             trail_value=excluded.trail_value,
-            symbol=excluded.symbol
-    ''', (pid, info['position_id'], info['opening_order_id'], info['closing_order_id'], info['side'], float(info['callback']), bool_to_int(info['active']), opening_price, trail_value, symbol))
+            symbol=excluded.symbol,
+            opened_at=excluded.opened_at
+    ''', (pid, info['position_id'], info['opening_order_id'], info['closing_order_id'], info['side'], float(info['callback']), bool_to_int(info['active']), opening_price, trail_value, symbol, opened_at))
     conn.commit()
     conn.close()
 
@@ -274,6 +283,8 @@ DEFAULT_SYMBOL_CONFIGS = {
 TRAILING_STEP_MULTIPLIER_DEFAULT = 0.375  # default global value
 TRAILING_COUNT_DEFAULT = 1
 TOP_SYMBOLS_BY_VOLUME_DEFAULT = 5
+TRADE_MAX_CANDLES_DEFAULT = 50
+CANDLE_INTERVAL_MINUTES_DEFAULT = 5
 
 DEFAULT_ADDITIONAL_SYMBOLS = []
 DEFAULT_EXCLUDED_SYMBOLS = []
@@ -306,6 +317,16 @@ try:
 except ImportError:
     OV_EXCLUDED_SYMBOLS = []
 
+try:
+    from override_config import TRADE_MAX_CANDLES as OV_TRADE_MAX_CANDLES
+except ImportError:
+    OV_TRADE_MAX_CANDLES = None
+
+try:
+    from override_config import CANDLE_INTERVAL_MINUTES as OV_CANDLE_INTERVAL_MINUTES
+except ImportError:
+    OV_CANDLE_INTERVAL_MINUTES = None
+
 # === Final Config Values (Override if provided) ===
 SYMBOL_CONFIGS = OV_SYMBOL_CONFIGS if OV_SYMBOL_CONFIGS is not None else DEFAULT_SYMBOL_CONFIGS
 API_DELAY_MS = OV_API_DELAY_MS if OV_API_DELAY_MS is not None else DEFAULT_API_DELAY_MS
@@ -313,6 +334,8 @@ ATR_MA_PERIOD = OV_ATR_MA_PERIOD if OV_ATR_MA_PERIOD is not None else DEFAULT_AT
 TOP_SYMBOLS_BY_VOLUME = OV_TOP_SYMBOLS_BY_VOLUME if OV_TOP_SYMBOLS_BY_VOLUME is not None else TOP_SYMBOLS_BY_VOLUME_DEFAULT
 ADDITIONAL_SYMBOLS = OV_ADDITIONAL_SYMBOLS if OV_ADDITIONAL_SYMBOLS is not None else DEFAULT_ADDITIONAL_SYMBOLS
 EXCLUDED_SYMBOLS = OV_EXCLUDED_SYMBOLS if OV_EXCLUDED_SYMBOLS is not None else DEFAULT_EXCLUDED_SYMBOLS
+TRADE_MAX_CANDLES = OV_TRADE_MAX_CANDLES if OV_TRADE_MAX_CANDLES is not None else TRADE_MAX_CANDLES_DEFAULT
+CANDLE_INTERVAL_MINUTES = OV_CANDLE_INTERVAL_MINUTES if OV_CANDLE_INTERVAL_MINUTES is not None else CANDLE_INTERVAL_MINUTES_DEFAULT
 
 CONTRACTS_MAP = {}
 CONTRACT_SIZES = {}
@@ -812,6 +835,62 @@ def get_trade_by_opening_order_id(symbol, order_id):
         print_with_date(f"[ERROR] Trade lookup failed for opening order_id {order_id}: {e}")
         return None
 
+def close_position(symbol, info):
+    """
+    Close an open position for the given symbol and position info.
+    Uses a MARKET order to fully close the position.
+    """
+    try:
+        position_id = info.get("position_id")
+        side = info.get("side")
+        contracts = CONTRACTS_MAP.get(symbol, 1)
+
+        if not position_id or not side:
+            print_with_date(f"[ERROR] Cannot close {symbol}: missing position_id or side.")
+            return False
+
+        # The closing side is opposite to the position side
+        closing_side = "BUY" if side == "SHORT" else "SELL"
+
+        url_path = "/api/v2.2/order"
+        full_url = BASE_URL + url_path
+
+        # Build a market reduce-only order
+        order = {
+            "postOnly": False,
+            "price": 0.0,
+            "reduceOnly": True,
+            "side": closing_side,
+            "size": contracts,
+            "symbol": symbol,
+            "time_in_force": "GTC",
+            "type": "MARKET",
+            "txType": "LIMIT",
+            "positionMode": "ISOLATED",
+            "positionId": position_id
+        }
+
+        body_str = json.dumps(order, separators=(',', ':'))
+        nonce = str(int(time.time() * 1000))
+        sig = generate_signature(API_SECRET, url_path, nonce, body_str)
+        headers = {
+            "request-api": API_KEY,
+            "request-nonce": nonce,
+            "request-sign": sig,
+            "Content-Type": "application/json"
+        }
+
+        debug(f"[CLOSE] Sending close order for {symbol} {side} {contracts} contracts")
+        response = throttled_request("POST", full_url, headers=headers, data=body_str)
+        response.raise_for_status()
+
+        print_with_date(f"[CLOSE] Sent close order for {symbol} {side}")
+        return True
+
+    except Exception as e:
+        print_with_date(f"[ERROR] Failed to close {symbol}: {e}")
+        return False
+
 # === Win Check ===
 def is_win_from_trade(realized_pnl):
     try:
@@ -869,7 +948,8 @@ def place_all_positions(symbol, sides=("LONG", "SHORT")):
                 "callback": callback,
                 "active": True,
                 "opening_price" : opening_price,
-                "trail_value" : trail_value
+                "trail_value" : trail_value,
+                "opened_at": time.time()
             }
             position_info = positions[symbol][pid]
             update_position(pid, position_info, symbol)
@@ -882,6 +962,18 @@ def check_positions(symbol):
         debug(f"[check_positions] Checking... {symbol} {pid}")
         if not info["active"]:
             continue
+
+        opened_at = info.get("opened_at")
+        if opened_at:
+            elapsed_minutes = (time.time() - opened_at) / 60
+            if elapsed_minutes >= TRADE_MAX_CANDLES * CANDLE_INTERVAL_MINUTES:
+                print_with_date(f"[TIMEOUT] Closing {symbol} {pid} after {elapsed_minutes:.1f} minutes.")
+                # Code to close the position immediately:
+                close_position(symbol, info)  # You'll need to implement or call your existing close logic
+                info["active"] = False
+                update_position(pid, info, symbol)
+                continue
+
         position_data = get_position_status(info["position_id"])
 
         if position_data == "_network_error_":
