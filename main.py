@@ -1113,6 +1113,7 @@ def check_positions(symbol):
     return all_closed
 
 def start_new_cycle(resume=False):
+    global positions
     if resume:
         active_symbols = get_active_symbols_from_db()
         symbols = list(active_symbols.keys())
@@ -1123,6 +1124,7 @@ def start_new_cycle(resume=False):
     else:
         base_symbols = get_final_symbol_list()
         # Forget about old trades if we are starting a new cycle
+        positions = {}
         for symbol in base_symbols:
             clear_positions(symbol)
         symbols, long_symbols, short_symbols = filter_symbols_by_rank(
