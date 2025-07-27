@@ -1054,11 +1054,23 @@ def run_main_loop():
             print("C", end='',flush=True)
             check_sleep_start=False
             time.sleep(1)
+            batch_all_closed = True
             for symbol in symbols:
-                all_closed = check_positions(symbol)
-                if all_closed:
+                symbol_closed = check_positions(symbol)
+                if not symbol_closed:
+                    batch_all_closed = False
+
+            if batch_all_closed:
+                print_with_date("[CYCLE] All symbols closed. Starting new cycle.")
+                base_symbols = get_final_symbol_list()
+                symbols, long_symbols, short_symbols = filter_symbols_by_rank(
+                    base_symbols,
+                    long_top_number=3,
+                    short_top_number=3,
+                    rank_type='EMA'
+                )
+                for symbol in symbols:
                     update_trailing_stops_for_symbol(symbol)
-                    print_with_date(f"[{symbol}] [ALL CLOSED] Restarting cycle.")
                     if symbol in long_symbols:
                         place_all_positions(symbol, sides=("LONG",))
                     elif symbol in short_symbols:
