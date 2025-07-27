@@ -1121,6 +1121,9 @@ def start_new_cycle(resume=False):
         print_with_date(f"[RESUME] Resuming cycle with symbols: {symbols}")
     else:
         base_symbols = get_final_symbol_list()
+        # Forget about old trades if we are starting a new cycle
+        for symbol in base_symbols:
+            clear_positions(symbol)
         symbols, long_symbols, short_symbols = filter_symbols_by_rank(
             base_symbols,
             long_top_number=3,
