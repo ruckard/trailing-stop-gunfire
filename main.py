@@ -1118,7 +1118,8 @@ def start_new_cycle(resume=False):
         symbols = list(active_symbols.keys())
         long_symbols = [s for s, sides in active_symbols.items() if "LONG" in sides]
         short_symbols = [s for s, sides in active_symbols.items() if "SHORT" in sides]
-        print_with_date(f"[RESUME] Resuming cycle with symbols: {symbols}")
+        print_with_date(f"[RESUME] Resuming cycle with LONG symbols: {long_symbols}")
+        print_with_date(f"[RESUME] Resuming cycle with SHORT symbols: {short_symbols}")
     else:
         base_symbols = get_final_symbol_list()
         # Forget about old trades if we are starting a new cycle
@@ -1138,6 +1139,10 @@ def start_new_cycle(resume=False):
 
     print_with_date(f"[CONTRACT_SIZES] {CONTRACT_SIZES}")
     print_with_date(f"[CONTRACTS_MAP] {CONTRACTS_MAP}")
+
+    if (not resume):
+        print_with_date(f"[NEW] New cycle with LONG symbols: {long_symbols}")
+        print_with_date(f"[NEW] New cycle with SHORT symbols: {short_symbols}")
 
     for symbol in symbols:
         if symbol not in positions:
