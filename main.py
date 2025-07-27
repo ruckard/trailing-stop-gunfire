@@ -1004,29 +1004,18 @@ def check_positions(symbol):
                 print_with_date(f"[LOSS] Not reopening {symbol} {pid}")
     return all_closed
 
-# === Main Loop ===
-def run_main_loop():
-    init_db()
-
-    # TODO: Save the contract map values in a second table
-    # So that they can be used when the trades are resumed and some of them are still on.
-    symbols = get_final_symbol_list()
-    print_with_date(f"[SYMBOLS] (Pre-selected) Trading symbols: {symbols}")
-
+def start_new_cycle():
+    base_symbols = get_final_symbol_list()
     symbols, long_symbols, short_symbols = filter_symbols_by_rank(
-        symbols,
+        base_symbols,
         long_top_number=3,
         short_top_number=3,
         rank_type='EMA'
     )
 
-    print_with_date(f"[SYMBOLS] Selected LONG: {long_symbols} | SHORT: {short_symbols}")
-
-    global CONTRACT_SIZES
+    global CONTRACT_SIZES, MIN_PRICE_INCREMENTS, CONTRACTS_MAP
     CONTRACT_SIZES = fetch_contract_sizes(symbols)
-    global MIN_PRICE_INCREMENTS
     MIN_PRICE_INCREMENTS = fetch_min_price_increments(symbols)
-    global CONTRACTS_MAP
     CONTRACTS_MAP = compute_contracts_from_prices(symbols, CONTRACT_SIZES)
 
     print_with_date(f"[CONTRACT_SIZES] {CONTRACT_SIZES}")
@@ -1045,42 +1034,37 @@ def run_main_loop():
         else:
             show_positions(symbol)
 
+    return symbols, long_symbols, short_symbols
+
+# === Main Loop ===
+def run_main_loop():
+    init_db()
+
+    symbols, long_symbols, short_symbols = start_new_cycle()
+
     global check_sleep_start
-    check_sleep_start=True
+    check_sleep_start = True
+
     while True:
         try:
             if check_sleep_start:
                 print_with_date("", end='')
-            print("C", end='',flush=True)
-            check_sleep_start=False
+            print("C", end='', flush=True)
+            check_sleep_start = False
             time.sleep(1)
-            batch_all_closed = True
-            for symbol in symbols:
-                symbol_closed = check_positions(symbol)
-                if not symbol_closed:
-                    batch_all_closed = False
+
+            batch_all_closed = all(check_positions(symbol) for symbol in symbols)
 
             if batch_all_closed:
                 print_with_date("[CYCLE] All symbols closed. Starting new cycle.")
-                base_symbols = get_final_symbol_list()
-                symbols, long_symbols, short_symbols = filter_symbols_by_rank(
-                    base_symbols,
-                    long_top_number=3,
-                    short_top_number=3,
-                    rank_type='EMA'
-                )
-                for symbol in symbols:
-                    update_trailing_stops_for_symbol(symbol)
-                    if symbol in long_symbols:
-                        place_all_positions(symbol, sides=("LONG",))
-                    elif symbol in short_symbols:
-                        place_all_positions(symbol, sides=("SHORT",))
+                symbols, long_symbols, short_symbols = start_new_cycle()
+
         except requests.exceptions.RequestException as e:
             print_with_date(f"[NETWORK ERROR] {e}. Retrying in 5 minutes.")
         except Exception as e:
             print_with_date(f"[UNHANDLED EXCEPTION] {e}. Traceback: {traceback.format_exc()} Retrying in 5 minutes.")
-        print("S", end='',flush=True)
-        check_sleep_start=False
+        print("S", end='', flush=True)
+        check_sleep_start = False
         time.sleep(5 * 60)
 
 if __name__ == "__main__":
