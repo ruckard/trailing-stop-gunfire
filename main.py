@@ -1180,7 +1180,10 @@ def run_main_loop():
             check_sleep_start = False
             time.sleep(1)
 
-            batch_all_closed = all(check_positions(symbol) for symbol in symbols)
+            batch_all_closed = True
+            for symbol in symbols:
+                if not check_positions(symbol):
+                    batch_all_closed = False
 
             if batch_all_closed:
                 print_with_date("[CYCLE] All symbols closed. Starting new cycle.")
