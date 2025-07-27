@@ -236,6 +236,20 @@ def clear_positions(symbol):
     conn.commit()
     conn.close()
 
+def get_active_symbols_from_db():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT DISTINCT symbol, side FROM positions WHERE active = 1")
+    rows = c.fetchall()
+    conn.close()
+
+    active_symbols = {}
+    for symbol, side in rows:
+        if symbol not in active_symbols:
+            active_symbols[symbol] = set()
+        active_symbols[symbol].add(side)
+    return active_symbols  # e.g. {'BTC-PERP': {'LONG'}, 'ETH-PERP': {'SHORT'}}
+
 def debug(msg):
     if DEBUG_MODE:
         print_with_date(f"[DEBUG] {msg}")
@@ -1004,14 +1018,21 @@ def check_positions(symbol):
                 print_with_date(f"[LOSS] Not reopening {symbol} {pid}")
     return all_closed
 
-def start_new_cycle():
-    base_symbols = get_final_symbol_list()
-    symbols, long_symbols, short_symbols = filter_symbols_by_rank(
-        base_symbols,
-        long_top_number=3,
-        short_top_number=3,
-        rank_type='EMA'
-    )
+def start_new_cycle(resume=False):
+    if resume:
+        active_symbols = get_active_symbols_from_db()
+        symbols = list(active_symbols.keys())
+        long_symbols = [s for s, sides in active_symbols.items() if "LONG" in sides]
+        short_symbols = [s for s, sides in active_symbols.items() if "SHORT" in sides]
+        print_with_date(f"[RESUME] Resuming cycle with symbols: {symbols}")
+    else:
+        base_symbols = get_final_symbol_list()
+        symbols, long_symbols, short_symbols = filter_symbols_by_rank(
+            base_symbols,
+            long_top_number=3,
+            short_top_number=3,
+            rank_type='EMA'
+        )
 
     global CONTRACT_SIZES, MIN_PRICE_INCREMENTS, CONTRACTS_MAP
     CONTRACT_SIZES = fetch_contract_sizes(symbols)
@@ -1025,7 +1046,7 @@ def start_new_cycle():
         if symbol not in positions:
             positions[symbol] = {}
         load_positions(symbol)
-        if not positions[symbol]:
+        if not positions[symbol] and not resume:
             update_trailing_stops_for_symbol(symbol)
             if symbol in long_symbols:
                 place_all_positions(symbol, sides=("LONG",))
@@ -1040,7 +1061,9 @@ def start_new_cycle():
 def run_main_loop():
     init_db()
 
-    symbols, long_symbols, short_symbols = start_new_cycle()
+    active_symbols = get_active_symbols_from_db()
+    resume_cycle = bool(active_symbols)
+    symbols, long_symbols, short_symbols = start_new_cycle(resume=resume_cycle)
 
     global check_sleep_start
     check_sleep_start = True
