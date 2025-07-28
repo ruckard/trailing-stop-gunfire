@@ -849,6 +849,17 @@ def close_position(symbol, info):
             print_with_date(f"[ERROR] Cannot close {symbol}: missing position_id or side.")
             return False
 
+        # Get the actual position size from BTSE
+        position_data = get_position_status(position_id)
+        if not position_data:
+            print_with_date(f"[ERROR] No active position found for {symbol} {position_id}, skipping close.")
+            return False
+
+        size = float(position_data.get("size", 0))
+        if size <= 0:
+            print_with_date(f"[INFO] Position {symbol} already closed or size=0, skipping close.")
+            return False
+
         # The closing side is opposite to the position side
         closing_side = "BUY" if side == "SHORT" else "SELL"
 
@@ -861,7 +872,7 @@ def close_position(symbol, info):
             "price": 0.0,
             "reduceOnly": True,
             "side": closing_side,
-            "size": contracts,
+            "size": size,
             "symbol": symbol,
             "time_in_force": "GTC",
             "type": "MARKET",
