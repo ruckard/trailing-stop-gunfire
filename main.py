@@ -837,49 +837,24 @@ def get_trade_by_opening_order_id(symbol, order_id):
 
 def close_position(symbol, info):
     """
-    Close an open position for the given symbol and position info.
-    Uses a MARKET order to fully close the position.
+    Close an open position for the given symbol using BTSE's close_position endpoint.
+    Automatically closes the entire position at market price.
     """
     try:
         position_id = info.get("position_id")
-        side = info.get("side")
-        contracts = CONTRACTS_MAP.get(symbol, 1)
 
-        if not position_id or not side:
-            print_with_date(f"[ERROR] Cannot close {symbol}: missing position_id or side.")
-            return False
-
-        # Get the actual position size from BTSE
-        position_data = get_position_status(position_id)
-        if not position_data:
-            print_with_date(f"[ERROR] No active position found for {symbol} {position_id}, skipping close.")
-            return False
-
-        size = float(position_data.get("size", 0))
-        if size <= 0:
-            print_with_date(f"[INFO] Position {symbol} already closed or size=0, skipping close.")
-            return False
-
-        # The closing side is opposite to the position side
-        closing_side = "BUY" if side == "SHORT" else "SELL"
-
-        url_path = "/api/v2.2/order"
+        url_path = "/api/v2.2/order/close_position"
         full_url = BASE_URL + url_path
 
-        # Build a market reduce-only order
+        # Basic request body
         order = {
-            "postOnly": False,
-            "price": 0.0,
-            "reduceOnly": True,
-            "side": closing_side,
-            "size": size,
             "symbol": symbol,
-            "time_in_force": "GTC",
-            "type": "MARKET",
-            "txType": "LIMIT",
-            "positionMode": "ISOLATED",
-            "positionId": position_id
+            "type": "MARKET"
         }
+
+        # For isolated/hedge mode, include positionId
+        if position_id:
+            order["positionId"] = position_id
 
         body_str = json.dumps(order, separators=(',', ':'))
         nonce = str(int(time.time() * 1000))
@@ -891,11 +866,11 @@ def close_position(symbol, info):
             "Content-Type": "application/json"
         }
 
-        debug(f"[CLOSE] Sending close order for {symbol} {side} {contracts} contracts")
+        debug(f"[CLOSE] Sending close_position request for {symbol}, positionId={position_id}")
         response = throttled_request("POST", full_url, headers=headers, data=body_str)
         response.raise_for_status()
 
-        print_with_date(f"[CLOSE] Sent close order for {symbol} {side}")
+        print_with_date(f"[CLOSE] Successfully sent close_position for {symbol}")
         return True
 
     except Exception as e:
