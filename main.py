@@ -341,6 +341,50 @@ CONTRACTS_MAP = {}
 CONTRACT_SIZES = {}
 MIN_PRICE_INCREMENTS = {}
 
+def get_available_balance(currency="USDT"):
+    """
+    Query the CROSS wallet and return the available balance for the given currency.
+    """
+
+    try:
+        url_path = '/api/v2.2/user/wallet'
+        url = BASE_URL + url_path
+        nonce = str(int(time.time() * 1000))
+
+        sig = generate_signature(API_SECRET, url_path, nonce, "")
+        headers = {
+            'request-api': API_KEY,
+            'request-nonce': nonce,
+            'request-sign': sig,
+            'Content-Type': 'application/json'
+        }
+
+        params = {}
+
+        response = throttled_request("GET", url, headers=headers, data=params)
+
+        response.raise_for_status()
+        data = response.json()
+
+        if not isinstance(data, list) or len(data) == 0:
+            print_with_date("[BALANCE] Empty or invalid wallet response.")
+            return Decimal("0")
+
+        # Filter for CROSS@ wallet
+        cross_wallet = next((w for w in data if w.get("wallet") == "CROSS@"), None)
+        if not cross_wallet:
+            print_with_date("[BALANCE] No CROSS@ wallet found in response.")
+            return Decimal("0")
+
+        available_balance = Decimal(str(cross_wallet.get("availableBalance", 0)))
+
+        print_with_date(f"[BALANCE] Available {currency}: {available_balance}")
+        return available_balance
+
+    except Exception as e:
+        print_with_date(f"[BALANCE ERROR] {e}")
+        return Decimal("0")
+
 def fetch_top_symbols_by_volume(limit=5):
     try:
         url = f"{BASE_URL}/api/v2.2/market_summary"
@@ -481,53 +525,63 @@ def compute_contracts_from_prices(symbols, contract_sizes):
     contract_values = {}
     trail_percents = {}
 
-    # Step 1: Collect price × size and trail percentage for each symbol
     for symbol in symbols:
         price = get_current_price(symbol)
         if price is None or symbol not in contract_sizes:
-            print_with_date(f"[ERROR] Skipping {symbol}, missing price or contract size.")
             continue
         price = Decimal(str(price))
         size = contract_sizes[symbol]
         value = price * size
         prices[symbol] = price
         contract_values[symbol] = value
-
-        # Use the first trailing stop value as trail %
         if symbol in TRAILING_STOPS_MAP and TRAILING_STOPS_MAP[symbol]:
             trail_percents[symbol] = Decimal(str(TRAILING_STOPS_MAP[symbol][0])) / Decimal("100")
         else:
-            trail_percents[symbol] = Decimal("0.01")  # fallback 1%
+            trail_percents[symbol] = Decimal("0.01")
 
     if not contract_values:
-        print_with_date("[ERROR] No data to compute contracts.")
-        return {}
+        return {}, Decimal("0")
 
-    # Step 2: Compute maximum expected loss across symbols
-    maximum_expected_loss = Decimal("0")
-    for symbol, value in contract_values.items():
-        current_expected_loss = value * trail_percents[symbol]  # USDT per contract * trail %
-        if current_expected_loss > maximum_expected_loss:
-            maximum_expected_loss = current_expected_loss
+    # Step 1: Compute base maximum expected loss
+    maximum_expected_loss = max(
+        (value * trail_percents[symbol]) for symbol, value in contract_values.items()
+    )
 
-    # Step 3: Scale contracts so each symbol’s expected loss ≤ maximum_expected_loss
+    # Step 2: Calculate factor based on available USDT
+    available_usdt = get_available_balance("USDT")  # You need this function
+    target_budget = Decimal(str(available_usdt)) * Decimal("0.8")
+
+    # Estimate current total exposure at base MEL = 1.0
+    base_total_exposure = sum(value * trail_percents[symbol] for symbol, value in contract_values.items())
+    if base_total_exposure > 0:
+        factor = target_budget / base_total_exposure
+    else:
+        factor = Decimal("1")
+
+    if factor < 1:
+        print_with_date(f"[SIZING] Downscaling factor applied: {factor:.2f}")
+    else:
+        print_with_date(f"[SIZING] Factor applied: {factor:.2f}")
+
+    scaled_maximum_expected_loss = maximum_expected_loss * factor
+
+    # Step 3: Scale contracts using scaled_maximum_expected_loss
     contracts_map = {}
     for symbol, value in contract_values.items():
         if trail_percents[symbol] == 0:
             base_contracts = Decimal("1")
         else:
-            base_contracts = (maximum_expected_loss / (value * trail_percents[symbol])).to_integral_value(rounding=ROUND_FLOOR)
+            base_contracts = (scaled_maximum_expected_loss / (value * trail_percents[symbol])).to_integral_value(rounding=ROUND_FLOOR)
 
         base_contracts = max(base_contracts, 1)
 
-        # Apply optional per-symbol multiplier
         config = SYMBOL_CONFIGS.get(symbol, {})
         multiplier = Decimal(str(config.get("SYMBOL_MULTIPLIER", 1.0)))
         adjusted_contracts = int((Decimal(base_contracts) * multiplier).to_integral_value(rounding=ROUND_FLOOR))
 
         contracts_map[symbol] = max(adjusted_contracts, 1)
 
-    return contracts_map, maximum_expected_loss
+    return contracts_map, scaled_maximum_expected_loss
 
 def build_trailing_stops_map():
     result = {}
