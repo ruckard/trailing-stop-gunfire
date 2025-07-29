@@ -525,7 +525,6 @@ def compute_contracts_from_prices(symbols, contract_sizes):
     notional_per_contract = {}
     per_contract_losses = {}
 
-    # Step 1: Collect price, notional, per-contract MEL
     for symbol in symbols:
         price = get_current_price(symbol)
         if price is None or symbol not in contract_sizes:
@@ -545,47 +544,47 @@ def compute_contracts_from_prices(symbols, contract_sizes):
     available_usdt = get_available_balance("USDT")
     target_budget = Decimal(str(available_usdt)) * Decimal("0.8")
 
-    # Step 2: Equalize MELs to the smallest one
-    min_loss = min(per_contract_losses.values())
-    raw_contracts = {}
-    for symbol, loss in per_contract_losses.items():
-        if loss > min_loss and loss > 0:
-            contracts = (min_loss / loss).to_integral_value(rounding=ROUND_FLOOR)
-        else:
-            contracts = Decimal("1")
-        raw_contracts[symbol] = max(contracts, 1)
+    # Start with 1 contract for each symbol
+    contracts_map = {sym: Decimal("1") for sym in per_contract_losses}
 
-    # Step 3: Calculate total notional and apply scaling if needed
-    total_notional = sum(raw_contracts[sym] * notional_per_contract[sym] for sym in raw_contracts)
-    print_with_date(f"[SIZING] Total Notional={total_notional:.4f}, TargetBudget={target_budget:.4f}")
+    def total_notional():
+        return sum(contracts_map[sym] * notional_per_contract[sym] for sym in contracts_map)
 
-    scaling_factor = Decimal("1")
-    if total_notional > target_budget and total_notional > 0:
-        scaling_factor = target_budget / total_notional
-        print_with_date(f"[SIZING] Applying notional scaling factor: {scaling_factor:.4f}")
+    def total_loss(sym):
+        return per_contract_losses[sym] * contracts_map[sym]
 
-    contracts_map = {}
-    max_expected_loss = Decimal("0")
+    # Iteratively increase smallest TotalLoss until we reach the budget
+    while True:
+        current_total_notional = total_notional()
+        if current_total_notional >= target_budget:
+            break
 
-    # Step 4: Apply scaling and compute final MEL
-    for symbol, contracts in raw_contracts.items():
-        scaled_contracts = (Decimal(contracts) * scaling_factor).to_integral_value(rounding=ROUND_FLOOR)
-        scaled_contracts = max(scaled_contracts, 1)
+        # Find symbol with smallest TotalLoss
+        symbol_to_increase = min(contracts_map.keys(), key=lambda s: total_loss(s))
 
-        total_loss_for_symbol = per_contract_losses[symbol] * scaled_contracts
-        if total_loss_for_symbol > max_expected_loss:
-            max_expected_loss = total_loss_for_symbol
+        # Check if adding one more contract would exceed the budget
+        projected_notional = current_total_notional + notional_per_contract[symbol_to_increase]
+        if projected_notional > target_budget:
+            break
 
-        contracts_map[symbol] = int(scaled_contracts)
+        # Increase contracts for that symbol
+        contracts_map[symbol_to_increase] += 1
 
+    max_expected_loss = max(total_loss(sym) for sym in contracts_map)
+
+    # Convert to int and log
+    final_contracts_map = {}
+    for symbol in contracts_map:
+        c = int(contracts_map[symbol])
+        final_contracts_map[symbol] = c
         print_with_date(
             f"[SIZING] {symbol}: Price={prices[symbol]}, Notional/Contract={notional_per_contract[symbol]}, "
-            f"PerContractLoss={per_contract_losses[symbol]}, Contracts={scaled_contracts}, "
-            f"TotalNotional={notional_per_contract[symbol] * scaled_contracts}, "
-            f"TotalLoss={total_loss_for_symbol}"
+            f"PerContractLoss={per_contract_losses[symbol]}, Contracts={c}, "
+            f"TotalNotional={notional_per_contract[symbol] * c}, TotalLoss={per_contract_losses[symbol] * c}"
         )
 
-    return contracts_map, max_expected_loss
+    print_with_date(f"[SIZING] Final TotalNotional={total_notional()}, TargetBudget={target_budget}")
+    return final_contracts_map, max_expected_loss
 
 def build_trailing_stops_map():
     result = {}
