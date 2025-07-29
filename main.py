@@ -548,23 +548,19 @@ def compute_contracts_from_prices(symbols, contract_sizes):
     )
 
     # Step 2: Calculate factor based on available USDT
-    available_usdt = get_available_balance("USDT")  # You need this function
+    available_usdt = get_available_balance("USDT")
+    num_symbols = len(contract_values)
     target_budget = Decimal(str(available_usdt)) * Decimal("0.8")
 
-    # Estimate current total exposure at base MEL = 1.0
-    base_total_exposure = sum(value * trail_percents[symbol] for symbol, value in contract_values.items())
-    if base_total_exposure > 0:
-        factor = target_budget / base_total_exposure
+    # Limit scaled MEL so that total exposure stays <= target_budget
+    max_allowed_mel = target_budget / Decimal(num_symbols)
+    if maximum_expected_loss > 0:
+        factor = max_allowed_mel / maximum_expected_loss
     else:
         factor = Decimal("1")
 
-    if factor < 1:
-        print_with_date(f"[SIZING] Downscaling factor applied: {factor:.2f}")
-    else:
-        print_with_date(f"[SIZING] Factor applied: {factor:.2f}")
-
     scaled_maximum_expected_loss = maximum_expected_loss * factor
-
+    print_with_date(f"[SIZING] Factor applied: {factor:.2f}, Scaled MEL: {scaled_maximum_expected_loss:.4f}, Symbols: {num_symbols}")
     # Step 3: Scale contracts using scaled_maximum_expected_loss
     contracts_map = {}
     for symbol, value in contract_values.items():
