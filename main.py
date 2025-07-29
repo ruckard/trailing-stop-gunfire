@@ -479,7 +479,9 @@ def fetch_min_price_increments(symbols):
 def compute_contracts_from_prices(symbols, contract_sizes):
     prices = {}
     contract_values = {}
+    trail_percents = {}
 
+    # Step 1: Collect price × size and trail percentage for each symbol
     for symbol in symbols:
         price = get_current_price(symbol)
         if price is None or symbol not in contract_sizes:
@@ -491,27 +493,41 @@ def compute_contracts_from_prices(symbols, contract_sizes):
         prices[symbol] = price
         contract_values[symbol] = value
 
+        # Use the first trailing stop value as trail %
+        if symbol in TRAILING_STOPS_MAP and TRAILING_STOPS_MAP[symbol]:
+            trail_percents[symbol] = Decimal(str(TRAILING_STOPS_MAP[symbol][0])) / Decimal("100")
+        else:
+            trail_percents[symbol] = Decimal("0.01")  # fallback 1%
+
     if not contract_values:
         print_with_date("[ERROR] No data to compute contracts.")
         return {}
 
-    # Find the most expensive contract (e.g. BTC)
-    max_value = max(contract_values.values())
+    # Step 2: Compute maximum expected loss across symbols
+    maximum_expected_loss = Decimal("0")
+    for symbol, value in contract_values.items():
+        current_expected_loss = value * trail_percents[symbol]  # USDT per contract * trail %
+        if current_expected_loss > maximum_expected_loss:
+            maximum_expected_loss = current_expected_loss
 
-    # Calculate how many contracts of each symbol stay <= max_value
+    # Step 3: Scale contracts so each symbol’s expected loss ≤ maximum_expected_loss
     contracts_map = {}
     for symbol, value in contract_values.items():
-        base_contracts = (max_value / value).to_integral_value(rounding=ROUND_FLOOR)
+        if trail_percents[symbol] == 0:
+            base_contracts = Decimal("1")
+        else:
+            base_contracts = (maximum_expected_loss / (value * trail_percents[symbol])).to_integral_value(rounding=ROUND_FLOOR)
+
         base_contracts = max(base_contracts, 1)
 
-        # Apply SYMBOL_MULTIPLIER from config (optional)
+        # Apply optional per-symbol multiplier
         config = SYMBOL_CONFIGS.get(symbol, {})
         multiplier = Decimal(str(config.get("SYMBOL_MULTIPLIER", 1.0)))
         adjusted_contracts = int((Decimal(base_contracts) * multiplier).to_integral_value(rounding=ROUND_FLOOR))
 
-        contracts_map[symbol] = max(adjusted_contracts, 1) # at least 1
+        contracts_map[symbol] = max(adjusted_contracts, 1)
 
-    return contracts_map
+    return contracts_map, maximum_expected_loss
 
 def build_trailing_stops_map():
     result = {}
@@ -1123,7 +1139,7 @@ def start_new_cycle(resume=False):
     global CONTRACT_SIZES, MIN_PRICE_INCREMENTS, CONTRACTS_MAP
     CONTRACT_SIZES = fetch_contract_sizes(symbols)
     MIN_PRICE_INCREMENTS = fetch_min_price_increments(symbols)
-    CONTRACTS_MAP = compute_contracts_from_prices(symbols, CONTRACT_SIZES)
+    CONTRACTS_MAP, MAX_EXPECTED_LOSS = compute_contracts_from_prices(symbols, CONTRACT_SIZES)
 
     print_with_date(f"[CONTRACT_SIZES] {CONTRACT_SIZES}")
     print_with_date(f"[CONTRACTS_MAP] {CONTRACTS_MAP}")
@@ -1131,6 +1147,7 @@ def start_new_cycle(resume=False):
     if (not resume):
         print_with_date(f"[NEW] New cycle with LONG symbols: {long_symbols}")
         print_with_date(f"[NEW] New cycle with SHORT symbols: {short_symbols}")
+        print_with_date(f"[NEW] MaxExpectedLoss: {MAX_EXPECTED_LOSS:.2f} USDT")
 
     for symbol in symbols:
         if symbol not in positions:
