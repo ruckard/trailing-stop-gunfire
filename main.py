@@ -522,62 +522,70 @@ def fetch_min_price_increments(symbols):
 
 def compute_contracts_from_prices(symbols, contract_sizes):
     prices = {}
-    contract_values = {}
-    trail_percents = {}
+    notional_per_contract = {}
+    per_contract_losses = {}
 
+    # Step 1: Collect price, notional, per-contract MEL
     for symbol in symbols:
         price = get_current_price(symbol)
         if price is None or symbol not in contract_sizes:
             continue
         price = Decimal(str(price))
         size = contract_sizes[symbol]
-        value = price * size
-        prices[symbol] = price
-        contract_values[symbol] = value
-        if symbol in TRAILING_STOPS_MAP and TRAILING_STOPS_MAP[symbol]:
-            trail_percents[symbol] = Decimal(str(TRAILING_STOPS_MAP[symbol][0])) / Decimal("100")
-        else:
-            trail_percents[symbol] = Decimal("0.01")
+        notional = price * size
+        trail_percent = Decimal(str(TRAILING_STOPS_MAP.get(symbol, [1])[0])) / Decimal("100")
 
-    if not contract_values:
+        prices[symbol] = price
+        notional_per_contract[symbol] = notional
+        per_contract_losses[symbol] = notional * trail_percent
+
+    if not per_contract_losses:
         return {}, Decimal("0")
 
-    # Step 1: Compute base maximum expected loss
-    maximum_expected_loss = max(
-        (value * trail_percents[symbol]) for symbol, value in contract_values.items()
-    )
-
-    # Step 2: Calculate factor based on available USDT
     available_usdt = get_available_balance("USDT")
-    num_symbols = len(contract_values)
     target_budget = Decimal(str(available_usdt)) * Decimal("0.8")
 
-    # Limit scaled MEL so that total exposure stays <= target_budget
-    max_allowed_mel = target_budget / Decimal(num_symbols)
-    if maximum_expected_loss > 0:
-        factor = max_allowed_mel / maximum_expected_loss
-    else:
-        factor = Decimal("1")
-
-    scaled_maximum_expected_loss = maximum_expected_loss * factor
-    print_with_date(f"[SIZING] Factor applied: {factor:.2f}, Scaled MEL: {scaled_maximum_expected_loss:.4f}, Symbols: {num_symbols}")
-    # Step 3: Scale contracts using scaled_maximum_expected_loss
-    contracts_map = {}
-    for symbol, value in contract_values.items():
-        if trail_percents[symbol] == 0:
-            base_contracts = Decimal("1")
+    # Step 2: Equalize MELs to the smallest one
+    min_loss = min(per_contract_losses.values())
+    raw_contracts = {}
+    for symbol, loss in per_contract_losses.items():
+        if loss > min_loss and loss > 0:
+            contracts = (min_loss / loss).to_integral_value(rounding=ROUND_FLOOR)
         else:
-            base_contracts = (scaled_maximum_expected_loss / (value * trail_percents[symbol])).to_integral_value(rounding=ROUND_FLOOR)
+            contracts = Decimal("1")
+        raw_contracts[symbol] = max(contracts, 1)
 
-        base_contracts = max(base_contracts, 1)
+    # Step 3: Calculate total notional and apply scaling if needed
+    total_notional = sum(raw_contracts[sym] * notional_per_contract[sym] for sym in raw_contracts)
+    print_with_date(f"[SIZING] Total Notional={total_notional:.4f}, TargetBudget={target_budget:.4f}")
 
-        config = SYMBOL_CONFIGS.get(symbol, {})
-        multiplier = Decimal(str(config.get("SYMBOL_MULTIPLIER", 1.0)))
-        adjusted_contracts = int((Decimal(base_contracts) * multiplier).to_integral_value(rounding=ROUND_FLOOR))
+    scaling_factor = Decimal("1")
+    if total_notional > target_budget and total_notional > 0:
+        scaling_factor = target_budget / total_notional
+        print_with_date(f"[SIZING] Applying notional scaling factor: {scaling_factor:.4f}")
 
-        contracts_map[symbol] = max(adjusted_contracts, 1)
+    contracts_map = {}
+    max_expected_loss = Decimal("0")
 
-    return contracts_map, scaled_maximum_expected_loss
+    # Step 4: Apply scaling and compute final MEL
+    for symbol, contracts in raw_contracts.items():
+        scaled_contracts = (Decimal(contracts) * scaling_factor).to_integral_value(rounding=ROUND_FLOOR)
+        scaled_contracts = max(scaled_contracts, 1)
+
+        total_loss_for_symbol = per_contract_losses[symbol] * scaled_contracts
+        if total_loss_for_symbol > max_expected_loss:
+            max_expected_loss = total_loss_for_symbol
+
+        contracts_map[symbol] = int(scaled_contracts)
+
+        print_with_date(
+            f"[SIZING] {symbol}: Price={prices[symbol]}, Notional/Contract={notional_per_contract[symbol]}, "
+            f"PerContractLoss={per_contract_losses[symbol]}, Contracts={scaled_contracts}, "
+            f"TotalNotional={notional_per_contract[symbol] * scaled_contracts}, "
+            f"TotalLoss={total_loss_for_symbol}"
+        )
+
+    return contracts_map, max_expected_loss
 
 def build_trailing_stops_map():
     result = {}
