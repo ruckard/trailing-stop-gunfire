@@ -341,6 +341,50 @@ CONTRACTS_MAP = {}
 CONTRACT_SIZES = {}
 MIN_PRICE_INCREMENTS = {}
 
+def get_available_balance(currency="USDT"):
+    """
+    Query the CROSS wallet and return the available balance for the given currency.
+    """
+
+    try:
+        url_path = '/api/v2.2/user/wallet'
+        url = BASE_URL + url_path
+        nonce = str(int(time.time() * 1000))
+
+        sig = generate_signature(API_SECRET, url_path, nonce, "")
+        headers = {
+            'request-api': API_KEY,
+            'request-nonce': nonce,
+            'request-sign': sig,
+            'Content-Type': 'application/json'
+        }
+
+        params = {}
+
+        response = throttled_request("GET", url, headers=headers, data=params)
+
+        response.raise_for_status()
+        data = response.json()
+
+        if not isinstance(data, list) or len(data) == 0:
+            print_with_date("[BALANCE] Empty or invalid wallet response.")
+            return Decimal("0")
+
+        # Filter for CROSS@ wallet
+        cross_wallet = next((w for w in data if w.get("wallet") == "CROSS@"), None)
+        if not cross_wallet:
+            print_with_date("[BALANCE] No CROSS@ wallet found in response.")
+            return Decimal("0")
+
+        available_balance = Decimal(str(cross_wallet.get("availableBalance", 0)))
+
+        print_with_date(f"[BALANCE] Available {currency}: {available_balance}")
+        return available_balance
+
+    except Exception as e:
+        print_with_date(f"[BALANCE ERROR] {e}")
+        return Decimal("0")
+
 def fetch_top_symbols_by_volume(limit=5):
     try:
         url = f"{BASE_URL}/api/v2.2/market_summary"
@@ -478,56 +522,69 @@ def fetch_min_price_increments(symbols):
 
 def compute_contracts_from_prices(symbols, contract_sizes):
     prices = {}
-    contract_values = {}
-    trail_percents = {}
+    notional_per_contract = {}
+    per_contract_losses = {}
 
-    # Step 1: Collect price × size and trail percentage for each symbol
     for symbol in symbols:
         price = get_current_price(symbol)
         if price is None or symbol not in contract_sizes:
-            print_with_date(f"[ERROR] Skipping {symbol}, missing price or contract size.")
             continue
         price = Decimal(str(price))
         size = contract_sizes[symbol]
-        value = price * size
+        notional = price * size
+        trail_percent = Decimal(str(TRAILING_STOPS_MAP.get(symbol, [1])[0])) / Decimal("100")
+
         prices[symbol] = price
-        contract_values[symbol] = value
+        notional_per_contract[symbol] = notional
+        per_contract_losses[symbol] = notional * trail_percent
 
-        # Use the first trailing stop value as trail %
-        if symbol in TRAILING_STOPS_MAP and TRAILING_STOPS_MAP[symbol]:
-            trail_percents[symbol] = Decimal(str(TRAILING_STOPS_MAP[symbol][0])) / Decimal("100")
-        else:
-            trail_percents[symbol] = Decimal("0.01")  # fallback 1%
+    if not per_contract_losses:
+        return {}, Decimal("0")
 
-    if not contract_values:
-        print_with_date("[ERROR] No data to compute contracts.")
-        return {}
+    available_usdt = get_available_balance("USDT")
+    target_budget = Decimal(str(available_usdt)) * Decimal("0.8")
 
-    # Step 2: Compute maximum expected loss across symbols
-    maximum_expected_loss = Decimal("0")
-    for symbol, value in contract_values.items():
-        current_expected_loss = value * trail_percents[symbol]  # USDT per contract * trail %
-        if current_expected_loss > maximum_expected_loss:
-            maximum_expected_loss = current_expected_loss
+    # Start with 1 contract for each symbol
+    contracts_map = {sym: Decimal("1") for sym in per_contract_losses}
 
-    # Step 3: Scale contracts so each symbol’s expected loss ≤ maximum_expected_loss
-    contracts_map = {}
-    for symbol, value in contract_values.items():
-        if trail_percents[symbol] == 0:
-            base_contracts = Decimal("1")
-        else:
-            base_contracts = (maximum_expected_loss / (value * trail_percents[symbol])).to_integral_value(rounding=ROUND_FLOOR)
+    def total_notional():
+        return sum(contracts_map[sym] * notional_per_contract[sym] for sym in contracts_map)
 
-        base_contracts = max(base_contracts, 1)
+    def total_loss(sym):
+        return per_contract_losses[sym] * contracts_map[sym]
 
-        # Apply optional per-symbol multiplier
-        config = SYMBOL_CONFIGS.get(symbol, {})
-        multiplier = Decimal(str(config.get("SYMBOL_MULTIPLIER", 1.0)))
-        adjusted_contracts = int((Decimal(base_contracts) * multiplier).to_integral_value(rounding=ROUND_FLOOR))
+    # Iteratively increase smallest TotalLoss until we reach the budget
+    while True:
+        current_total_notional = total_notional()
+        if current_total_notional >= target_budget:
+            break
 
-        contracts_map[symbol] = max(adjusted_contracts, 1)
+        # Find symbol with smallest TotalLoss
+        symbol_to_increase = min(contracts_map.keys(), key=lambda s: total_loss(s))
 
-    return contracts_map, maximum_expected_loss
+        # Check if adding one more contract would exceed the budget
+        projected_notional = current_total_notional + notional_per_contract[symbol_to_increase]
+        if projected_notional > target_budget:
+            break
+
+        # Increase contracts for that symbol
+        contracts_map[symbol_to_increase] += 1
+
+    max_expected_loss = max(total_loss(sym) for sym in contracts_map)
+
+    # Convert to int and log
+    final_contracts_map = {}
+    for symbol in contracts_map:
+        c = int(contracts_map[symbol])
+        final_contracts_map[symbol] = c
+        print_with_date(
+            f"[SIZING] {symbol}: Price={prices[symbol]}, Notional/Contract={notional_per_contract[symbol]}, "
+            f"PerContractLoss={per_contract_losses[symbol]}, Contracts={c}, "
+            f"TotalNotional={notional_per_contract[symbol] * c}, TotalLoss={per_contract_losses[symbol] * c}"
+        )
+
+    print_with_date(f"[SIZING] Final TotalNotional={total_notional()}, TargetBudget={target_budget}")
+    return final_contracts_map, max_expected_loss
 
 def build_trailing_stops_map():
     result = {}
