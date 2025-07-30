@@ -4,7 +4,7 @@ import hashlib
 import requests
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import sqlite3
 from decimal import Decimal, getcontext, ROUND_FLOOR
 import traceback
@@ -32,7 +32,13 @@ def throttled_request(method, url, **kwargs):
     with lock_guard("ClientA"):
         return requests.request(method, url, timeout=30, **kwargs)
 
-def fetch_4h_ohlcv(symbol, limit=100):
+def prune_ohlcv_cache():
+    now = datetime.utcnow()
+    expired = [sym for sym, (_, ts) in OHLCV_CACHE.items() if now - ts >= OHLCV_CACHE_TIMEOUT]
+    for sym in expired:
+        del OHLCV_CACHE[sym]
+
+def fetch_4h_ohlcv_real(symbol, limit=100):
     url = f"{BASE_URL}/api/v2.2/ohlcv"
     end_time = int(time.time() * 1000)  # current timestamp in ms
     params = {
@@ -49,6 +55,23 @@ def fetch_4h_ohlcv(symbol, limit=100):
         return None
 
     df = pd.DataFrame(data, columns=["timestamp", "open", "high", "low", "close", "volume"])
+    return df
+
+def fetch_4h_ohlcv(symbol, limit=100):
+    """
+    Cached wrapper around fetch_4h_ohlcv_real.
+    Prunes expired entries and uses cache if available.
+    """
+    # Remove expired cache entries first
+    prune_ohlcv_cache()
+
+    # If symbol is cached after pruning, it's valid
+    if symbol in OHLCV_CACHE:
+        return OHLCV_CACHE[symbol][0]
+
+    # Otherwise, fetch fresh data and cache it
+    df = fetch_4h_ohlcv_real(symbol, limit)
+    OHLCV_CACHE[symbol] = (df, datetime.utcnow())
     return df
 
 def get_atr(symbol, period=14):
@@ -382,6 +405,10 @@ CONTRACT_SIZES = {}
 MIN_PRICE_INCREMENTS = {}
 
 LAST_AVAILABLE_BALANCE = None
+
+# { symbol: (dataframe, timestamp) }
+OHLCV_CACHE = {}
+OHLCV_CACHE_TIMEOUT = timedelta(minutes=5)
 
 def get_available_balance(currency="USDT"):
     """
