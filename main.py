@@ -9,6 +9,7 @@ import sqlite3
 from decimal import Decimal, getcontext, ROUND_FLOOR
 import traceback
 import pandas as pd
+import numpy as np
 
 from contextlib import contextmanager
 from api_lock_client import api_lock_acquire_lock, api_lock_release_lock
@@ -49,6 +50,30 @@ def fetch_4h_ohlcv(symbol, limit=100):
 
     df = pd.DataFrame(data, columns=["timestamp", "open", "high", "low", "close", "volume"])
     return df
+
+def get_atr(symbol, period=14):
+    try:
+        df = fetch_4h_ohlcv(symbol)
+        if df is None or df.empty:
+            print_with_date(f"[ATR] No candle data for {symbol}")
+            return Decimal("0")
+
+        atr_value = calculate_atr(df, ma_period=period)
+
+        # Handle if calculate_atr returns a float instead of Series
+        if isinstance(atr_value, (float, int)):
+            latest_atr = Decimal(str(atr_value))
+        else:
+            if atr_value.empty:
+                print_with_date(f"[ATR] Could not compute ATR for {symbol}")
+                return Decimal("0")
+            latest_atr = Decimal(str(atr_value.iloc[-1]))
+
+        return latest_atr
+
+    except Exception as e:
+        print_with_date(f"[ATR ERROR] {symbol}: {e}")
+        return Decimal("0")
 
 def calculate_ema_trend_score(symbol, lookback=50):
     df = fetch_4h_ohlcv(symbol)  # currently returns 5m candles
@@ -292,6 +317,9 @@ DEFAULT_EXCLUDED_SYMBOLS = []
 DEFAULT_API_DELAY_MS = 500  # Default 500ms between API requests
 DEFAULT_ATR_MA_PERIOD = 48
 
+DEFAULT_VOL_BOTTOM_PERCENTILE = 10
+DEFAULT_VOL_TOP_PERCENTILE = 90
+
 # === Check if override_config.py exists and load values if present ===
 if os.path.exists('override_config.py'):
     from override_config import (
@@ -327,6 +355,16 @@ try:
 except ImportError:
     OV_CANDLE_INTERVAL_MINUTES = None
 
+try:
+    from override_config import VOL_BOTTOM_PERCENTILE as OV_VOL_BOTTOM_PERCENTILE
+except ImportError:
+    OV_VOL_BOTTOM_PERCENTILE = None
+
+try:
+    from override_config import VOL_TOP_PERCENTILE as OV_VOL_TOP_PERCENTILE
+except ImportError:
+    OV_VOL_TOP_PERCENTILE = None
+
 # === Final Config Values (Override if provided) ===
 SYMBOL_CONFIGS = OV_SYMBOL_CONFIGS if OV_SYMBOL_CONFIGS is not None else DEFAULT_SYMBOL_CONFIGS
 API_DELAY_MS = OV_API_DELAY_MS if OV_API_DELAY_MS is not None else DEFAULT_API_DELAY_MS
@@ -336,6 +374,8 @@ ADDITIONAL_SYMBOLS = OV_ADDITIONAL_SYMBOLS if OV_ADDITIONAL_SYMBOLS is not None 
 EXCLUDED_SYMBOLS = OV_EXCLUDED_SYMBOLS if OV_EXCLUDED_SYMBOLS is not None else DEFAULT_EXCLUDED_SYMBOLS
 TRADE_MAX_CANDLES = OV_TRADE_MAX_CANDLES if OV_TRADE_MAX_CANDLES is not None else TRADE_MAX_CANDLES_DEFAULT
 CANDLE_INTERVAL_MINUTES = OV_CANDLE_INTERVAL_MINUTES if OV_CANDLE_INTERVAL_MINUTES is not None else CANDLE_INTERVAL_MINUTES_DEFAULT
+VOL_BOTTOM_PERCENTILE = OV_VOL_BOTTOM_PERCENTILE if OV_VOL_BOTTOM_PERCENTILE is not None else DEFAULT_VOL_BOTTOM_PERCENTILE
+VOL_TOP_PERCENTILE = OV_VOL_TOP_PERCENTILE if OV_VOL_TOP_PERCENTILE is not None else DEFAULT_VOL_TOP_PERCENTILE
 
 CONTRACTS_MAP = {}
 CONTRACT_SIZES = {}
@@ -427,20 +467,26 @@ def get_final_symbol_list():
             seen.add(s)
     return final
 
-def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_type='EMA'):
+def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_type='EMA', 
+                           vol_bottom_percentile=10, vol_top_percentile=90):
     """
-    Rank and filter symbols based on a trend score.
+    Rank and filter symbols based on trend score and normalized ATR%.
 
     Args:
-        long_top_number (int): Number of top long symbols to select.
-        short_top_number (int): Number of top short symbols to select.
-        rank_type (str): Type of ranking metric to use ('EMA' supported for now).
+        symbols (list): Candidate symbols.
+        long_top_number (int): Top N long symbols.
+        short_top_number (int): Top N short symbols.
+        rank_type (str): 'EMA' supported for now.
+        vol_bottom_percentile (int): Cut symbols below this ATR% percentile.
+        vol_top_percentile (int): Cut symbols above this ATR% percentile.
 
     Returns:
-        tuple: (symbols, long_symbols, short_symbols)
+        tuple: (final_symbols, long_symbols, short_symbols)
     """
-
     trend_scores = {}
+    atr_percents = {}
+
+    # Compute EMA score and ATR% for each symbol
     for symbol in symbols:
         if rank_type == 'EMA':
             score = calculate_ema_trend_score(symbol)
@@ -448,13 +494,39 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
             raise ValueError(f"Unsupported rank_type: {rank_type}")
         trend_scores[symbol] = score
 
-    # Sort symbols by score for long/short
-    sorted_symbols = sorted(trend_scores.items(), key=lambda x: x[1], reverse=True)
+        atr = get_atr(symbol)  # You need a function that gets ATR value
+        price = get_current_price(symbol)
+        atr_percent = (Decimal(str(atr)) / Decimal(str(price))) * Decimal("100")
+        atr_percents[symbol] = atr_percent
 
-    long_symbols = [s for s, score in sorted_symbols if score > 0][:long_top_number]
-    short_symbols = [s for s, score in sorted(trend_scores.items(), key=lambda x: x[1]) if score < 0][:short_top_number]
+    # Compute ATR percentiles
+    atr_values = sorted(atr_percents.values())
+
+    # Convert Decimal ATR values to float for NumPy percentile
+    atr_values = [float(v) for v in atr_percents.values()]
+
+    low_cut = np.percentile(atr_values, vol_bottom_percentile)
+    high_cut = np.percentile(atr_values, vol_top_percentile)
+
+    # Filter symbols by ATR percentile range
+    filtered_symbols = [s for s in symbols if low_cut <= float(atr_percents[s]) <= high_cut]
+
+    # Normalize ATR values for adjusted score
+    max_atr = max(atr_percents[s] for s in filtered_symbols) if filtered_symbols else 1
+    adjusted_scores = {
+        s: float(trend_scores[s]) * (float(atr_percents[s]) / float(max_atr))
+        for s in filtered_symbols
+    }
+
+    # Sort by adjusted score
+    sorted_symbols = sorted(adjusted_scores.items(), key=lambda x: x[1], reverse=True)
+
+    long_symbols = [s for s, _ in sorted_symbols[:long_top_number]]
+    short_symbols = [s for s, _ in sorted_symbols[-short_top_number:]]
 
     final_symbols = long_symbols + short_symbols
+    print_with_date(f"[SYMBOLS] ATR percentile cut: low={low_cut:.4f}, high={high_cut:.4f}")
+    print_with_date(f"[SYMBOLS] Selected LONG: {long_symbols} | SHORT: {short_symbols}")
 
     return final_symbols, long_symbols, short_symbols
 
@@ -1190,7 +1262,9 @@ def start_new_cycle(resume=False):
             base_symbols,
             long_top_number=3,
             short_top_number=3,
-            rank_type='EMA'
+            rank_type='EMA',
+            vol_bottom_percentile = VOL_BOTTOM_PERCENTILE,
+            vol_top_percentile = VOL_TOP_PERCENTILE
         )
 
     global CONTRACT_SIZES, MIN_PRICE_INCREMENTS, CONTRACTS_MAP
