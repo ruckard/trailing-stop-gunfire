@@ -98,6 +98,48 @@ def get_atr(symbol, period=14):
         print_with_date(f"[ATR ERROR] {symbol}: {e}")
         return Decimal("0")
 
+def calculate_trend_with_rsi(symbol, lookback=50, rsi_period=14, rsi_low_percentile=10, rsi_high_percentile=90):
+    """
+    Calculate a trend score for a symbol based on slope and RSI filter.
+    Returns a positive or negative value, or 0 for range-bound symbols.
+    """
+
+    # Fetch candles using the cached function
+    df = fetch_4h_ohlcv(symbol)
+    if df is None or df.empty or len(df) < lookback:
+        return 0.0
+
+    closes = df['close'].astype(float).tail(lookback).values
+
+    # 1️ - Compute slope using linear regression
+    x = np.arange(len(closes))
+    slope, _ = np.polyfit(x, closes, 1)
+
+    # Normalize slope by price to make it relative
+    slope_normalized = slope / np.mean(closes)
+
+    # 2️ - Range filter: if max-min is small, consider it range-bound
+    max_price = np.max(closes)
+    min_price = np.min(closes)
+    range_pct = (max_price - min_price) / np.mean(closes) * 100
+    if range_pct < 0.5:  # threshold can be tuned
+        return 0.0
+
+    # 3️ - Compute RSI
+    delta = np.diff(closes)
+    gain = np.where(delta > 0, delta, 0)
+    loss = np.where(delta < 0, -delta, 0)
+    avg_gain = np.mean(gain[-rsi_period:])
+    avg_loss = np.mean(loss[-rsi_period:])
+    rs = avg_gain / avg_loss if avg_loss != 0 else np.inf
+    rsi = 100 - (100 / (1 + rs))
+
+    # 4️ - Apply RSI percentile filter
+    if rsi < rsi_low_percentile or rsi > rsi_high_percentile:
+        return 0.0
+
+    return float(slope_normalized)
+
 def calculate_ema_trend_score(symbol, lookback=50):
     df = fetch_4h_ohlcv(symbol)  # currently returns 5m candles
     if df is None or len(df) < lookback:
@@ -512,7 +554,7 @@ def get_final_symbol_list():
             seen.add(s)
     return final
 
-def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_type='EMA', 
+def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_type='TRENDRSI',
                            vol_bottom_percentile=10, vol_top_percentile=90):
     """
     Rank and filter symbols based on trend score and normalized ATR%.
@@ -535,6 +577,8 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
     for symbol in symbols:
         if rank_type == 'EMA':
             score = calculate_ema_trend_score(symbol)
+        elif rank_type == 'TRENDRSI':
+            score = calculate_trend_with_rsi(symbol)
         else:
             raise ValueError(f"Unsupported rank_type: {rank_type}")
         trend_scores[symbol] = score
@@ -1307,7 +1351,7 @@ def start_new_cycle(resume=False):
             base_symbols,
             long_top_number=3,
             short_top_number=3,
-            rank_type='EMA',
+            rank_type='TRENDRSI',
             vol_bottom_percentile = VOL_BOTTOM_PERCENTILE,
             vol_top_percentile = VOL_TOP_PERCENTILE
         )
