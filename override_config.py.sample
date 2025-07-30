@@ -34,3 +34,7 @@ ADDITIONAL_SYMBOLS = [
 ]
 
 # TOP_SYMBOLS_BY_VOLUME = 10 # Optional: How many top-volume symbols to fetch. Default: 5
+
+# Override volatility filters (optional)
+VOL_BOTTOM_PERCENTILE = 15
+VOL_TOP_PERCENTILE = 85
