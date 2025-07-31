@@ -130,6 +130,14 @@ def calculate_easy_trend_with_rsi(symbol, lookback=50, rsi_period=14,
             mean_price = np.mean(segment)
             raw_slope = end_price - start_price
             normalized_slope = raw_slope / mean_price
+
+            # Debug print for each segment
+            print_with_date(
+                f"[DEBUG EASY TREND] {symbol} | Segment {i+1}/{num_segments} | "
+                f"Start={start_price:.4f}, End={end_price:.4f}, "
+                f"RawSlope={raw_slope:.6f}, NormSlope={normalized_slope:.6f}"
+            )
+
             segment_slopes.append(normalized_slope)
 
         # Require all segment slopes to have the same sign
@@ -139,6 +147,10 @@ def calculate_easy_trend_with_rsi(symbol, lookback=50, rsi_period=14,
             return 0.0
 
         slope_normalized = sum(segment_slopes)
+        # Debug print for each segment
+        print_with_date(
+            f"[DEBUG EASY TREND] {symbol} | (TOTAL) SlopeNormalized: {slope_normalized}"
+        )
 
     # Range filter: avoid range-bound symbols
     max_price = np.max(closes)
