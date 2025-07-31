@@ -140,10 +140,19 @@ def calculate_easy_trend_with_rsi(symbol, lookback=50, rsi_period=14,
 
             segment_slopes.append(normalized_slope)
 
-        # Require all segment slopes to have the same sign
-        all_positive = all(s > 0 for s in segment_slopes)
-        all_negative = all(s < 0 for s in segment_slopes)
-        if not (all_positive or all_negative):
+        # Require at least 80% of segment slopes to be positive or negative
+        positive_count = sum(1 for s in segment_slopes if s > 0)
+        negative_count = sum(1 for s in segment_slopes if s < 0)
+        required_count = int(len(segment_slopes) * 0.8)
+
+        if positive_count >= required_count:
+            # Mostly uptrend
+            pass
+        elif negative_count >= required_count:
+            # Mostly downtrend
+            pass
+        else:
+            # Mixed trend, discard
             return 0.0
 
         slope_normalized = sum(segment_slopes)
