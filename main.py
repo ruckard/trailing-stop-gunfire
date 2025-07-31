@@ -98,6 +98,68 @@ def get_atr(symbol, period=14):
         print_with_date(f"[ATR ERROR] {symbol}: {e}")
         return Decimal("0")
 
+def calculate_trendest_with_rsi(symbol, lookback=50, rsi_period=14,
+                                rsi_low_cutoff=30, rsi_high_cutoff=70):
+    """
+    Calculate a 'trendest' score with RSI filter.
+    Requires all segments to have the same slope direction.
+    """
+
+    df = fetch_4h_ohlcv(symbol)
+    if df is None or df.empty or len(df) < lookback:
+        return 0.0
+
+    closes = df['close'].astype(float).tail(lookback).values
+
+    # Handle short lookbacks as the old version
+    if len(closes) <= 9:
+        x = np.arange(len(closes))
+        slope, _ = np.polyfit(x, closes, 1)
+        slope_normalized = slope / np.mean(closes)
+    else:
+        # Divide into 5-candle segments
+        segment_size = 5
+        num_segments = len(closes) // segment_size
+        closes = closes[-num_segments * segment_size:]  # trim to multiple of 5
+
+        segment_slopes = []
+        for i in range(num_segments):
+            segment = closes[i * segment_size:(i + 1) * segment_size]
+            x = np.arange(len(segment))
+            seg_slope, _ = np.polyfit(x, segment, 1)
+            segment_slopes.append(seg_slope / np.mean(segment))
+
+        # Check if all slopes have the same sign
+        all_positive = all(s > 0 for s in segment_slopes)
+        all_negative = all(s < 0 for s in segment_slopes)
+        if not (all_positive or all_negative):
+            return 0.0
+
+        # Slope is sum of segment slopes
+        slope_normalized = sum(segment_slopes)
+
+    # Range filter: avoid range-bound symbols
+    max_price = np.max(closes)
+    min_price = np.min(closes)
+    range_pct = (max_price - min_price) / np.mean(closes) * 100
+    if range_pct < 0.5:
+        return 0.0
+
+    # Compute RSI
+    delta = np.diff(closes)
+    gain = np.where(delta > 0, delta, 0)
+    loss = np.where(delta < 0, -delta, 0)
+    avg_gain = np.mean(gain[-rsi_period:])
+    avg_loss = np.mean(loss[-rsi_period:])
+    rs = avg_gain / avg_loss if avg_loss != 0 else np.inf
+    rsi = 100 - (100 / (1 + rs))
+
+    # Apply RSI cutoffs
+    if rsi < rsi_low_cutoff or rsi > rsi_high_cutoff:
+        return 0.0
+
+    return float(slope_normalized)
+
 def calculate_trend_with_rsi(symbol, lookback=50, rsi_period=14, rsi_low_percentile=10, rsi_high_percentile=90):
     """
     Calculate a trend score for a symbol based on slope and RSI filter.
@@ -587,6 +649,8 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
             score = calculate_ema_trend_score(symbol)
         elif rank_type == 'TRENDRSI':
             score = calculate_trend_with_rsi(symbol)
+        elif rank_type == 'TRENDEST':
+            score = calculate_trendest_with_rsi(symbol)
         else:
             raise ValueError(f"Unsupported rank_type: {rank_type}")
         trend_scores[symbol] = score
@@ -1367,7 +1431,7 @@ def start_new_cycle(resume=False):
             base_symbols,
             long_top_number=3,
             short_top_number=3,
-            rank_type='TRENDRSI',
+            rank_type='TRENDEST',
             vol_bottom_percentile = VOL_BOTTOM_PERCENTILE,
             vol_top_percentile = VOL_TOP_PERCENTILE
         )
