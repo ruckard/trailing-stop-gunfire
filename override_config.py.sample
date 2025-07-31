@@ -38,3 +38,7 @@ ADDITIONAL_SYMBOLS = [
 # Override volatility filters (optional)
 VOL_BOTTOM_PERCENTILE = 15
 VOL_TOP_PERCENTILE = 85
+
+# Control whether to reopen trades automatically after a WIN
+# Default: True
+REOPEN_ON_WIN = True
