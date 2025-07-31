@@ -1558,7 +1558,15 @@ def run_main_loop():
 
     active_symbols = get_active_symbols_from_db()
     resume_cycle = bool(active_symbols)
-    symbols, long_symbols, short_symbols = start_new_cycle(resume=resume_cycle)
+
+    # Ensure we have valid symbols before entering the main loop
+    symbols = None
+    while symbols is None:
+        symbols, long_symbols, short_symbols = start_new_cycle(resume=resume_cycle)
+        if symbols is None:
+            print_with_date("[MAIN LOOP] No active symbols. Waiting 10 minutes before retry.")
+            time.sleep(600)
+            resume_cycle = False  # ensure it's not treated as resume on next try
 
     global check_sleep_start
     check_sleep_start = True
@@ -1579,6 +1587,12 @@ def run_main_loop():
             if batch_all_closed:
                 print_with_date("[CYCLE] All symbols closed. Starting new cycle.")
                 symbols, long_symbols, short_symbols = start_new_cycle()
+
+            # If no symbols, just sleep and retry next iteration
+            if symbols is None:
+                print_with_date("[MAIN LOOP] No symbols in new cycle. Waiting 10 minutes.")
+                time.sleep(600)
+                continue
 
         except requests.exceptions.RequestException as e:
             print_with_date(f"[NETWORK ERROR] {e}. Retrying in 5 minutes.")
