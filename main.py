@@ -1519,6 +1519,11 @@ def start_new_cycle(resume=False):
             vol_top_percentile = VOL_TOP_PERCENTILE
         )
 
+        # Handle case where no symbols are selected
+        if symbols is None or long_symbols is None or short_symbols is None:
+            print_with_date("[CYCLE] No valid symbols found. Skipping cycle.")
+            return None, None, None
+
     global CONTRACT_SIZES, MIN_PRICE_INCREMENTS, CONTRACTS_MAP
     CONTRACT_SIZES = fetch_contract_sizes(symbols)
     MIN_PRICE_INCREMENTS = fetch_min_price_increments(symbols)
