@@ -700,71 +700,76 @@ def get_final_symbol_list():
             seen.add(s)
     return final
 
-def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_type='TRENDRSI',
-                           vol_bottom_percentile=10, vol_top_percentile=90):
+def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_type='EASY',
+                           vol_bottom_percentile=None, vol_top_percentile=None):
     """
     Rank and filter symbols based on trend score and normalized ATR%.
-
-    Args:
-        symbols (list): Candidate symbols.
-        long_top_number (int): Top N long symbols.
-        short_top_number (int): Top N short symbols.
-        rank_type (str): 'EMA' supported for now.
-        vol_bottom_percentile (int): Cut symbols below this ATR% percentile.
-        vol_top_percentile (int): Cut symbols above this ATR% percentile.
-
-    Returns:
-        tuple: (final_symbols, long_symbols, short_symbols)
+    Skips symbols with 0.0 score and ensures longs are positive slopes, shorts are negative.
     """
+
+    if vol_bottom_percentile is None:
+        vol_bottom_percentile = VOL_BOTTOM_PERCENTILE
+    if vol_top_percentile is None:
+        vol_top_percentile = VOL_TOP_PERCENTILE
+
     trend_scores = {}
     atr_percents = {}
 
-    # Compute EMA score and ATR% for each symbol
     for symbol in symbols:
+        # Compute score based on rank type
         if rank_type == 'EMA':
             score = calculate_ema_trend_score(symbol)
-        elif rank_type == 'TRENDRSI':
-            score = calculate_trend_with_rsi(symbol)
         elif rank_type == 'TRENDEST':
             score = calculate_trendest_with_rsi(symbol)
         elif rank_type == 'EASY':
             score = calculate_easy_trend_with_rsi(symbol)
         else:
             raise ValueError(f"Unsupported rank_type: {rank_type}")
+
+        # 🔹 Skip symbols with neutral trend
+        if score == 0.0:
+            continue
+
         trend_scores[symbol] = score
 
-        atr = get_atr(symbol)  # You need a function that gets ATR value
+        atr = get_atr(symbol)
         price = get_current_price(symbol)
         atr_percent = (Decimal(str(atr)) / Decimal(str(price))) * Decimal("100")
         atr_percents[symbol] = atr_percent
 
+    # 🔹 If no symbols survived, return None
+    if not trend_scores:
+        print_with_date("[SYMBOLS] No valid symbols after scoring. Returning None.")
+        return None, None, None
+
     # Compute ATR percentiles
-    atr_values = sorted(atr_percents.values())
-
-    # Convert Decimal ATR values to float for NumPy percentile
     atr_values = [float(v) for v in atr_percents.values()]
-
     low_cut = np.percentile(atr_values, vol_bottom_percentile)
     high_cut = np.percentile(atr_values, vol_top_percentile)
 
-    # Filter symbols by ATR percentile range
-    filtered_symbols = [s for s in symbols if low_cut <= float(atr_percents[s]) <= high_cut]
+    # Filter by ATR percentile range
+    filtered_symbols = [s for s in trend_scores if low_cut <= float(atr_percents[s]) <= high_cut]
 
-    # Normalize ATR values for adjusted score
-    max_atr = max(atr_percents[s] for s in filtered_symbols) if filtered_symbols else 1
+    if not filtered_symbols:
+        print_with_date("[SYMBOLS] No symbols within ATR percentile range. Returning None.")
+        return None, None, None
+
+    # Normalize ATR values
+    max_atr = max(float(atr_percents[s]) for s in filtered_symbols)
     adjusted_scores = {
-        s: float(trend_scores[s]) * (float(atr_percents[s]) / float(max_atr))
+        s: float(trend_scores[s]) * (float(atr_percents[s]) / max_atr)
         for s in filtered_symbols
     }
 
-    # Sort by adjusted score
+    # Sort symbols by adjusted score
     sorted_symbols = sorted(adjusted_scores.items(), key=lambda x: x[1], reverse=True)
 
-    long_symbols = [s for s, _ in sorted_symbols[:long_top_number]]
-    short_symbols = [s for s, _ in sorted_symbols[-short_top_number:]]
+    # 🔹 Ensure longs are positive and shorts are negative slopes
+    long_symbols = [s for s, score in sorted_symbols if score > 0][:long_top_number]
+    short_symbols = [s for s, score in sorted(adjusted_scores.items(), key=lambda x: x[1]) if score < 0][:short_top_number]
 
     final_symbols = long_symbols + short_symbols
-    print_with_date(f"[SYMBOLS] ATR percentile cut: low={low_cut:.4f}, high={high_cut:.4f}")
+    print_with_date(f"[SYMBOLS] ATR cut: low={low_cut:.4f}, high={high_cut:.4f}")
     print_with_date(f"[SYMBOLS] Selected LONG: {long_symbols} | SHORT: {short_symbols}")
 
     return final_symbols, long_symbols, short_symbols
