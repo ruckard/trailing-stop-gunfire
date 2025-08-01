@@ -1594,8 +1594,6 @@ def run_main_loop():
                 for symbol in symbols:
                     if not check_positions(symbol):
                         batch_all_closed = False
-            else:
-                batch_all_closed = False
 
             if batch_all_closed:
                 print_with_date("[CYCLE] All symbols closed. Starting new cycle.")
