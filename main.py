@@ -98,6 +98,86 @@ def get_atr(symbol, period=14):
         print_with_date(f"[ATR ERROR] {symbol}: {e}")
         return Decimal("0")
 
+def calculate_easy_trend5_with_rsi(symbol, lookback=50, rsi_period=14,
+                                   rsi_low_cutoff=30, rsi_high_cutoff=70,
+                                   window_size=5):
+    """
+    'Easy Trend 5' using overlapping sliding windows with log-return slopes.
+    Uses ohlc4 and weights consistency of slopes to determine trend.
+    """
+
+    df = fetch_4h_ohlcv(symbol)
+    if df is None or df.empty or len(df) < lookback:
+        return 0.0
+
+    # Use ohlc4 values
+    ohlc4 = ((df['open'] + df['high'] + df['low'] + df['close']) / 4.0).astype(float)
+    values = ohlc4.tail(lookback).values
+
+    if len(values) <= 9:
+        # For short lookbacks: average log returns over whole period
+        log_returns = np.diff(np.log(values))
+        slope_normalized = np.mean(log_returns)
+    else:
+        segment_slopes = []
+
+        # ✅ Overlapping sliding windows of size `window_size`
+        for i in range(len(values) - window_size + 1):
+            segment = values[i:i + window_size]
+
+            # Log-return slope for this window
+            log_returns = np.diff(np.log(segment))
+            mean_log_ret = np.mean(log_returns)
+            vol_adj_slope = mean_log_ret / (np.std(segment) + 1e-8)
+
+            segment_slopes.append(vol_adj_slope)
+            print_with_date(
+                f"[DEBUG EASY TREND5] {symbol} | Window {i+1}/{len(values)-window_size+1} | "
+                f"MeanLogRet={mean_log_ret:.6f}, VolAdjSlope={vol_adj_slope:.6f}"
+            )
+
+        # ✅ Check consistency of slopes (80% majority rule)
+        positive_count = sum(1 for s in segment_slopes if s > 0)
+        negative_count = sum(1 for s in segment_slopes if s < 0)
+        required_count = int(len(segment_slopes) * 0.8)
+
+        first_candle = values[0]
+        last_candle = values[-1]
+
+        if positive_count >= required_count and last_candle > first_candle:
+            slope_normalized = np.mean(segment_slopes)
+        elif negative_count >= required_count and last_candle < first_candle:
+            slope_normalized = np.mean(segment_slopes)
+        else:
+            return 0.0
+
+        print_with_date(
+            f"[DEBUG EASY TREND5] {symbol} | (TOTAL) AvgSlope: {slope_normalized:.6f}, "
+            f"First={first_candle:.4f}, Last={last_candle:.4f}, "
+            f"PosCount={positive_count}, NegCount={negative_count}"
+        )
+
+    # Range filter
+    max_price = np.max(values)
+    min_price = np.min(values)
+    range_pct = (max_price - min_price) / np.mean(values) * 100
+    if range_pct < 0.5:
+        return 0.0
+
+    # RSI on ohlc4
+    delta = np.diff(values)
+    gain = np.where(delta > 0, delta, 0)
+    loss = np.where(delta < 0, -delta, 0)
+    avg_gain = np.mean(gain[-rsi_period:])
+    avg_loss = np.mean(loss[-rsi_period:])
+    rs = avg_gain / avg_loss if avg_loss != 0 else np.inf
+    rsi = 100 - (100 / (1 + rs))
+
+    if rsi < rsi_low_cutoff or rsi > rsi_high_cutoff:
+        return 0.0
+
+    return float(slope_normalized)
+
 def calculate_easy_trend4_with_rsi(symbol, lookback=50, rsi_period=14,
                                    rsi_low_cutoff=30, rsi_high_cutoff=70):
     """
@@ -956,7 +1036,7 @@ def get_final_symbol_list():
             seen.add(s)
     return final
 
-def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_type='EASY4',
+def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_type='EASY5',
                            vol_bottom_percentile=None, vol_top_percentile=None):
     """
     Rank and filter symbols based on trend score and normalized ATR%.
@@ -985,6 +1065,8 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
             score = calculate_easy_trend3_with_rsi(symbol)
         elif rank_type == 'EASY4':
             score = calculate_easy_trend4_with_rsi(symbol)
+        elif rank_type == 'EASY5':
+            score = calculate_easy_trend5_with_rsi(symbol)
         else:
             raise ValueError(f"Unsupported rank_type: {rank_type}")
 
@@ -1776,7 +1858,7 @@ def start_new_cycle(resume=False):
             base_symbols,
             long_top_number=3,
             short_top_number=3,
-            rank_type='EASY4',
+            rank_type='EASY5',
             vol_bottom_percentile = VOL_BOTTOM_PERCENTILE,
             vol_top_percentile = VOL_TOP_PERCENTILE
         )
