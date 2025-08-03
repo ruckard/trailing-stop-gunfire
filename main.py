@@ -1173,8 +1173,8 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
     low_cut = np.percentile(atr_values, vol_bottom_percentile)
     high_cut = np.percentile(atr_values, vol_top_percentile)
 
-    # Filter by ATR percentile range
-    filtered_symbols = [s for s in trend_scores if low_cut <= float(atr_percents[s]) <= high_cut]
+    # ✅ Instead of filtering, just use all symbols
+    filtered_symbols = list(trend_scores.keys())
 
     if not filtered_symbols:
         print_with_date("[SYMBOLS] No symbols within ATR percentile range. Returning None.")
