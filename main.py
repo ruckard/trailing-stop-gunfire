@@ -978,7 +978,7 @@ DEFAULT_REOPEN_ON_BREAKEVEN = False
 
 DEFAULT_RANGE_ENTRY_OFFSET_PCT = 0.5
 DEFAULT_RANGE_TAKE_PROFIT_PCT = 0.7
-DEFAULT_STOP_LOSS_PCT = 0.5
+DEFAULT_RANGE_STOP_LOSS_PCT = 0.5
 
 # === Check if override_config.py exists and load values if present ===
 if os.path.exists('override_config.py'):
