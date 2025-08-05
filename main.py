@@ -98,7 +98,7 @@ def get_atr(symbol, period=14):
         print_with_date(f"[ATR ERROR] {symbol}: {e}")
         return Decimal("0")
 
-def classify_trend_or_range(symbol, lookback=50, threshold=0.0003):
+def classify_trend_or_range_real(symbol, lookback=50, threshold=0.0003):
     """
     Classifies symbol as 'trend' or 'range' based on trend strength.
     Returns: 'trend', 'range', or 'unknown'
@@ -114,6 +114,23 @@ def classify_trend_or_range(symbol, lookback=50, threshold=0.0003):
     except Exception as e:
         print_with_date(f"[ERROR] Classify failed for {symbol}: {e}")
         return "unknown"
+
+def classify_trend_or_range(symbol, lookback=50, threshold=0.0003):
+    """
+    Cached wrapper for trend/range classification.
+    """
+    now = time.time()
+
+    if symbol in TRENDRANGE_CACHE:
+        ts, result = TRENDRANGE_CACHE[symbol]
+        if now - ts < TRENDRANGE_CACHE_TIMEOUT:
+            return result
+        else:
+            del TRENDRANGE_CACHE[symbol]
+
+    result = classify_trend_or_range_real(symbol, lookback=lookback, threshold=threshold)
+    TRENDRANGE_CACHE[symbol] = (now, result)
+    return result
 
 def calculate_easy_trend6_with_rsi(symbol, lookback=50, rsi_period=14,
                                    rsi_low_cutoff=30, rsi_high_cutoff=70,
@@ -1037,6 +1054,9 @@ LAST_AVAILABLE_BALANCE = None
 # { symbol: (dataframe, timestamp) }
 OHLCV_CACHE = {}
 OHLCV_CACHE_TIMEOUT = timedelta(minutes=5)
+
+TRENDRANGE_CACHE = {}  # symbol → (timestamp, result)
+TRENDRANGE_CACHE_TIMEOUT = 5 * 60  # 5 minutes
 
 def get_available_balance(currency="USDT"):
     """
