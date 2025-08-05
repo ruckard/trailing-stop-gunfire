@@ -1878,11 +1878,15 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
         # You may need to customize this to your real API structure:
         place_range_order(symbol=symbol,
                           side=order_side,
-                          size=contracts,
+                          contracts=contracts,
                           entry_price=entry_price,
                           take_profit=take_profit,
                           stop_loss=stop_loss,
                           cl_order_id=cl_order_id)
+
+        if result is None or result[0] is None:
+            print_with_date(f"[ERROR] Failed to place range order for {symbol} {side}")
+            continue
 
         # Optionally track position:
         pid = f"range-{side.lower()}-{i}"
@@ -1899,13 +1903,65 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
         }
         update_position(pid, positions[symbol][pid], symbol)
 
-def place_range_order(symbol, side, size, entry_price, take_profit, stop_loss, cl_order_id):
+def place_range_order(symbol, position_side, contracts, entry_price, take_profit, stop_loss, cl_order_id):
     """
-    Submit a limit order with TP/SL as separate OCO or algo bracket order.
-    You need to adapt this to your exchange's order interface.
+    Place a limit order with both take profit and stop loss triggers.
+    Uses BTSE's API v2.2 /order endpoint.
     """
-    print_with_date(f"[MOCK ORDER] {side} {symbol} @ {entry_price:.4f} → TP: {take_profit:.4f}, SL: {stop_loss:.4f}")
-    # Place main limit order and attach TP/SL using bracket/OCO or custom logic.
+    try:
+        url = "https://api.btse.com/futures/api/v2.2/order"
+
+        limit_side = "SELL" if position_side == "SHORT" else "BUY"  # Entry side
+
+        url_path = '/api/v2.2/order'
+        full_url = BASE_URL + url_path
+
+        # === Limit Order ===
+        debug(f"[DEBUG] Placing LIMIT order: {limit_side} {contracts} contracts")
+        nonce = str(int(time.time() * 1000))
+        limit_order = {
+            "postOnly": False,
+            "price": float(entry_price),
+            "reduceOnly": False,
+            "side": limit_side,
+            "size": contracts,
+            "symbol": symbol,
+            "takeProfitPrice": float(take_profit),
+            "takeProfitTrigger": "markPrice",
+            "stopLossPrice": float(stop_loss),
+            "stopLossTrigger": "lastPrice",
+            "time_in_force": "GTC",
+            "type": "LIMIT",
+            "txType": "LIMIT",
+            "positionMode": "ISOLATED",
+            "clOrderID": cl_order_id
+        }
+        limit_body_str = json.dumps(limit_order, separators=(',', ':'))
+        limit_sig = generate_signature(API_SECRET, url_path, nonce, limit_body_str)
+        limit_headers = {
+            'request-api': API_KEY,
+            'request-nonce': nonce,
+            'request-sign': limit_sig,
+            'Content-Type': 'application/json'
+        }
+
+        debug(f"LIMIT order payload: {limit_body_str}")
+        limit_response = throttled_request('POST', full_url, headers=limit_headers, data=limit_body_str)
+        debug(f"LIMIT order response status: {limit_response.status_code}")
+        debug(f"LIMIT order response body: {limit_response.text}")
+        limit_response.raise_for_status()
+        limit_data = limit_response.json()
+        if not isinstance(limit_data, list) or not limit_data:
+            print_with_date("[ERROR] Unexpected limit order response.")
+            return None
+        position_id = market_data[0].get('positionId')
+        if not position_id:
+            print_with_date("[ERROR] Missing position ID.")
+            return None
+        return position_id
+    except Exception as e:
+        print_with_date(f"[ERROR] Failed to place order: {e}")
+        return None
 
 # === Check and Manage Positions ===
 def check_positions(symbol):
