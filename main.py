@@ -98,6 +98,40 @@ def get_atr(symbol, period=14):
         print_with_date(f"[ATR ERROR] {symbol}: {e}")
         return Decimal("0")
 
+def classify_trend_or_range_real(symbol, lookback=50, threshold=0.0003):
+    """
+    Classifies symbol as 'trend' or 'range' based on trend strength.
+    Returns: 'trend', 'range', or 'unknown'
+    """
+    try:
+        score = calculate_easy_trend6_with_rsi(symbol, lookback=lookback)
+        if score == 0.0:
+            return "range"
+        elif abs(score) >= threshold:
+            return "trend"
+        else:
+            return "range"
+    except Exception as e:
+        print_with_date(f"[ERROR] Classify failed for {symbol}: {e}")
+        return "unknown"
+
+def classify_trend_or_range(symbol, lookback=50, threshold=0.0003):
+    """
+    Cached wrapper for trend/range classification.
+    """
+    now = time.time()
+
+    if symbol in TRENDRANGE_CACHE:
+        ts, result = TRENDRANGE_CACHE[symbol]
+        if now - ts < TRENDRANGE_CACHE_TIMEOUT:
+            return result
+        else:
+            del TRENDRANGE_CACHE[symbol]
+
+    result = classify_trend_or_range_real(symbol, lookback=lookback, threshold=threshold)
+    TRENDRANGE_CACHE[symbol] = (now, result)
+    return result
+
 def calculate_easy_trend6_with_rsi(symbol, lookback=50, rsi_period=14,
                                    rsi_low_cutoff=30, rsi_high_cutoff=70,
                                    window_size=5):
@@ -942,6 +976,10 @@ DEFAULT_VOL_TOP_PERCENTILE = 90
 DEFAULT_REOPEN_ON_WIN = False
 DEFAULT_REOPEN_ON_BREAKEVEN = False
 
+DEFAULT_RANGE_ENTRY_OFFSET_PCT = 0.5
+DEFAULT_RANGE_TAKE_PROFIT_PCT = 0.7
+DEFAULT_RANGE_STOP_LOSS_PCT = 0.5
+
 # === Check if override_config.py exists and load values if present ===
 if os.path.exists('override_config.py'):
     from override_config import (
@@ -997,6 +1035,21 @@ try:
 except ImportError:
     OV_REOPEN_ON_BREAKEVEN = None
 
+try:
+    from override_config import RANGE_ENTRY_OFFSET_PCT as OV_RANGE_ENTRY_OFFSET_PCT
+except ImportError:
+    OV_RANGE_ENTRY_OFFSET_PCT = None
+
+try:
+    from override_config import RANGE_TAKE_PROFIT_PCT as OV_RANGE_TAKE_PROFIT_PCT
+except ImportError:
+    OV_RANGE_TAKE_PROFIT_PCT = None
+
+try:
+    from override_config import RANGE_STOP_LOSS_PCT as OV_RANGE_STOP_LOSS_PCT
+except ImportError:
+    OV_RANGE_STOP_LOSS_PCT = None
+
 # === Final Config Values (Override if provided) ===
 SYMBOL_CONFIGS = OV_SYMBOL_CONFIGS if OV_SYMBOL_CONFIGS is not None else DEFAULT_SYMBOL_CONFIGS
 API_DELAY_MS = OV_API_DELAY_MS if OV_API_DELAY_MS is not None else DEFAULT_API_DELAY_MS
@@ -1010,6 +1063,9 @@ VOL_BOTTOM_PERCENTILE = OV_VOL_BOTTOM_PERCENTILE if OV_VOL_BOTTOM_PERCENTILE is 
 VOL_TOP_PERCENTILE = OV_VOL_TOP_PERCENTILE if OV_VOL_TOP_PERCENTILE is not None else DEFAULT_VOL_TOP_PERCENTILE
 REOPEN_ON_WIN = OV_REOPEN_ON_WIN if OV_REOPEN_ON_WIN is not None else DEFAULT_REOPEN_ON_WIN
 REOPEN_ON_BREAKEVEN = OV_REOPEN_ON_BREAKEVEN if OV_REOPEN_ON_BREAKEVEN is not None else DEFAULT_REOPEN_ON_BREAKEVEN
+RANGE_ENTRY_OFFSET_PCT = OV_RANGE_ENTRY_OFFSET_PCT if OV_RANGE_ENTRY_OFFSET_PCT is not None else DEFAULT_RANGE_ENTRY_OFFSET_PCT
+RANGE_TAKE_PROFIT_PCT = OV_RANGE_TAKE_PROFIT_PCT if OV_RANGE_TAKE_PROFIT_PCT is not None else DEFAULT_RANGE_TAKE_PROFIT_PCT
+RANGE_STOP_LOSS_PCT = OV_RANGE_STOP_LOSS_PCT if OV_RANGE_STOP_LOSS_PCT is not None else DEFAULT_RANGE_STOP_LOSS_PCT
 
 CONTRACTS_MAP = {}
 CONTRACT_SIZES = {}
@@ -1020,6 +1076,9 @@ LAST_AVAILABLE_BALANCE = None
 # { symbol: (dataframe, timestamp) }
 OHLCV_CACHE = {}
 OHLCV_CACHE_TIMEOUT = timedelta(minutes=5)
+
+TRENDRANGE_CACHE = {}  # symbol → (timestamp, result)
+TRENDRANGE_CACHE_TIMEOUT = 5 * 60  # 5 minutes
 
 def get_available_balance(currency="USDT"):
     """
@@ -1737,6 +1796,16 @@ def place_all_positions(symbol, sides=("LONG", "SHORT")):
     print_with_date(f"[STARTING NEW {symbol} CYCLE]")
     positions[symbol].clear()
     clear_positions(symbol)
+    trend_type = classify_trend_or_range(symbol)
+
+    if trend_type == "trend":
+        place_trend_positions(symbol, sides)
+    elif trend_type == "range":
+        place_range_positions(symbol, sides, entry_offset_pct=RANGE_ENTRY_OFFSET_PCT, take_profit_pct=RANGE_TAKE_PROFIT_PCT, stop_loss_pct=RANGE_STOP_LOSS_PCT)
+    else:
+        print_with_date(f"[SKIP] Could not classify trend/range for {symbol}")
+
+def place_trend_positions(symbol, sides):
     for i, callback in enumerate(TRAILING_STOPS_MAP[symbol]):
         #for side in ["LONG"]:
         for side in sides:
@@ -1761,6 +1830,138 @@ def place_all_positions(symbol, sides=("LONG", "SHORT")):
             }
             position_info = positions[symbol][pid]
             update_position(pid, position_info, symbol)
+
+def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
+                          entry_offset_pct=0.5, take_profit_pct=0.7, stop_loss_pct=0.5):
+    """
+    Place range-trading orders: enter near support/resistance with tight SL/TP.
+    """
+
+    df = fetch_4h_ohlcv(symbol)
+    if df is None or df.empty or len(df) < lookback:
+        print_with_date(f"[RANGE STRATEGY] Insufficient data for {symbol}")
+        return
+
+    recent = df.tail(lookback)
+    high = recent['high'].max()
+    low = recent['low'].min()
+    range_mid = (high + low) / 2
+
+    contracts = CONTRACTS_MAP.get(symbol, 1)
+
+    price = get_current_price(symbol)
+    if price is None:
+        print_with_date(f"[RANGE STRATEGY] Failed to fetch price for {symbol}")
+        return
+
+    for i, side in enumerate(sides):
+        if side == "LONG":
+            entry_price = range_mid * (1 - entry_offset_pct / 100)
+            take_profit = entry_price * (1 + take_profit_pct / 100)
+            stop_loss = entry_price * (1 - stop_loss_pct / 100)
+            order_side = "BUY"
+        elif side == "SHORT":
+            entry_price = range_mid * (1 + entry_offset_pct / 100)
+            take_profit = entry_price * (1 - take_profit_pct / 100)
+            stop_loss = entry_price * (1 + stop_loss_pct / 100)
+            order_side = "SELL"
+        else:
+            continue
+
+        cl_order_id = f"{symbol}-range-{side.lower()}-{i}-{int(time.time())}"
+
+        print_with_date(
+            f"[RANGE STRATEGY] {symbol} {side} | Entry: {entry_price:.4f}, "
+            f"TP: {take_profit:.4f}, SL: {stop_loss:.4f}, Qty: {contracts}"
+        )
+
+        # You may need to customize this to your real API structure:
+        place_range_order(symbol=symbol,
+                          position_side=order_side,
+                          contracts=contracts,
+                          entry_price=entry_price,
+                          take_profit=take_profit,
+                          stop_loss=stop_loss,
+                          cl_order_id=cl_order_id)
+
+        if result is None or result[0] is None:
+            print_with_date(f"[ERROR] Failed to place range order for {symbol} {side}")
+            continue
+
+        # Optionally track position:
+        pid = f"range-{side.lower()}-{i}"
+        positions[symbol][pid] = {
+            "position_id": cl_order_id,
+            "opening_order_id": cl_order_id,
+            "closing_order_id": None,
+            "side": side,
+            "callback": None,
+            "active": True,
+            "opening_price": entry_price,
+            "trail_value": None,
+            "opened_at": time.time()
+        }
+        update_position(pid, positions[symbol][pid], symbol)
+
+def place_range_order(symbol, position_side, contracts, entry_price, take_profit, stop_loss, cl_order_id):
+    """
+    Place a limit order with both take profit and stop loss triggers.
+    Uses BTSE's API v2.2 /order endpoint.
+    """
+    try:
+        url = "https://api.btse.com/futures/api/v2.2/order"
+
+        limit_side = "SELL" if position_side == "SHORT" else "BUY"  # Entry side
+
+        url_path = '/api/v2.2/order'
+        full_url = BASE_URL + url_path
+
+        # === Limit Order ===
+        debug(f"[DEBUG] Placing LIMIT order: {limit_side} {contracts} contracts")
+        nonce = str(int(time.time() * 1000))
+        limit_order = {
+            "postOnly": False,
+            "price": float(entry_price),
+            "reduceOnly": False,
+            "side": limit_side,
+            "size": contracts,
+            "symbol": symbol,
+            "takeProfitPrice": float(take_profit),
+            "takeProfitTrigger": "markPrice",
+            "stopLossPrice": float(stop_loss),
+            "stopLossTrigger": "lastPrice",
+            "time_in_force": "GTC",
+            "type": "LIMIT",
+            "txType": "LIMIT",
+            "positionMode": "ISOLATED",
+            "clOrderID": cl_order_id
+        }
+        limit_body_str = json.dumps(limit_order, separators=(',', ':'))
+        limit_sig = generate_signature(API_SECRET, url_path, nonce, limit_body_str)
+        limit_headers = {
+            'request-api': API_KEY,
+            'request-nonce': nonce,
+            'request-sign': limit_sig,
+            'Content-Type': 'application/json'
+        }
+
+        debug(f"LIMIT order payload: {limit_body_str}")
+        limit_response = throttled_request('POST', full_url, headers=limit_headers, data=limit_body_str)
+        debug(f"LIMIT order response status: {limit_response.status_code}")
+        debug(f"LIMIT order response body: {limit_response.text}")
+        limit_response.raise_for_status()
+        limit_data = limit_response.json()
+        if not isinstance(limit_data, list) or not limit_data:
+            print_with_date("[ERROR] Unexpected limit order response.")
+            return None
+        position_id = market_data[0].get('positionId')
+        if not position_id:
+            print_with_date("[ERROR] Missing position ID.")
+            return None
+        return position_id
+    except Exception as e:
+        print_with_date(f"[ERROR] Failed to place order: {e}")
+        return None
 
 # === Check and Manage Positions ===
 def check_positions(symbol):
@@ -1977,6 +2178,9 @@ def start_new_cycle(resume=False):
         print_with_date(f"[NEW] New cycle with LONG symbols: {long_symbols}")
         print_with_date(f"[NEW] New cycle with SHORT symbols: {short_symbols}")
         print_with_date(f"[NEW] MaxExpectedLoss: {MAX_EXPECTED_LOSS:.2f} USDT")
+        for symbol in symbols:
+            trend_type = classify_trend_or_range(symbol)
+            print_with_date(f"[CLASSIFY] {symbol} : {trend_type.upper()}")
 
     for symbol in symbols:
         if symbol not in positions:
