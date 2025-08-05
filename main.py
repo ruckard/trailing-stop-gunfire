@@ -940,6 +940,7 @@ DEFAULT_VOL_BOTTOM_PERCENTILE = 10
 DEFAULT_VOL_TOP_PERCENTILE = 90
 
 DEFAULT_REOPEN_ON_WIN = False
+DEFAULT_REOPEN_ON_BREAKEVEN = False
 
 # === Check if override_config.py exists and load values if present ===
 if os.path.exists('override_config.py'):
@@ -991,6 +992,11 @@ try:
 except ImportError:
     OV_REOPEN_ON_WIN = None
 
+try:
+    from override_config import REOPEN_ON_BREAKEVEN as OV_REOPEN_ON_BREAKEVEN
+except ImportError:
+    OV_REOPEN_ON_BREAKEVEN = None
+
 # === Final Config Values (Override if provided) ===
 SYMBOL_CONFIGS = OV_SYMBOL_CONFIGS if OV_SYMBOL_CONFIGS is not None else DEFAULT_SYMBOL_CONFIGS
 API_DELAY_MS = OV_API_DELAY_MS if OV_API_DELAY_MS is not None else DEFAULT_API_DELAY_MS
@@ -1003,6 +1009,7 @@ CANDLE_INTERVAL_MINUTES = OV_CANDLE_INTERVAL_MINUTES if OV_CANDLE_INTERVAL_MINUT
 VOL_BOTTOM_PERCENTILE = OV_VOL_BOTTOM_PERCENTILE if OV_VOL_BOTTOM_PERCENTILE is not None else DEFAULT_VOL_BOTTOM_PERCENTILE
 VOL_TOP_PERCENTILE = OV_VOL_TOP_PERCENTILE if OV_VOL_TOP_PERCENTILE is not None else DEFAULT_VOL_TOP_PERCENTILE
 REOPEN_ON_WIN = OV_REOPEN_ON_WIN if OV_REOPEN_ON_WIN is not None else DEFAULT_REOPEN_ON_WIN
+REOPEN_ON_BREAKEVEN = OV_REOPEN_ON_BREAKEVEN if OV_REOPEN_ON_BREAKEVEN is not None else DEFAULT_REOPEN_ON_BREAKEVEN
 
 CONTRACTS_MAP = {}
 CONTRACT_SIZES = {}
@@ -1843,24 +1850,28 @@ def check_positions(symbol):
                     print_with_date(f"[WIN] Not reopening {symbol} {pid} (REOPEN_ON_WIN=False)")
                     continue
             elif pnl is not None and is_breakeven_from_trade(symbol, info, closing_price):
-                print_with_date(f"[BREAKEVEN] Reopening {symbol} {pid}")
-                contracts = CONTRACTS_MAP.get(symbol, 1)
-                new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
-                if new_pos_id and new_closing_order_id:
-                    positions[symbol][pid] = {
-                        "position_id": new_pos_id,
-                        "opening_order_id": new_opening_order_id,
-                        "closing_order_id": new_closing_order_id,
-                        "side": info["side"],
-                        "callback": info["callback"],
-                        "active": True,
-                        "opening_price" : opening_price,
-                        "trail_value" : trail_value
-                    }
-                    position_info = positions[symbol][pid]
-                    update_position(pid, position_info, symbol)
-                    all_closed = False
-                    continue
+                if REOPEN_ON_BREAKEVEN:
+                    print_with_date(f"[BREAKEVEN] Reopening {symbol} {pid}")
+                    contracts = CONTRACTS_MAP.get(symbol, 1)
+                    new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
+                    if new_pos_id and new_closing_order_id:
+                        positions[symbol][pid] = {
+                            "position_id": new_pos_id,
+                            "opening_order_id": new_opening_order_id,
+                            "closing_order_id": new_closing_order_id,
+                            "side": info["side"],
+                            "callback": info["callback"],
+                            "active": True,
+                            "opening_price" : opening_price,
+                            "trail_value" : trail_value
+                        }
+                        position_info = positions[symbol][pid]
+                        update_position(pid, position_info, symbol)
+                        all_closed = False
+                        continue
+                    else:
+                        print_with_date(f"[BREAKEVEN] Not reopening {symbol} {pid} (REOPEN_ON_BREAKEVEN=False)")
+                        continue
             else:
                 print_with_date(f"[LOSS] Not reopening {symbol} {pid}")
             continue
@@ -1899,23 +1910,27 @@ def check_positions(symbol):
                     print_with_date(f"[WIN] Not reopening {symbol} {pid} (REOPEN_ON_WIN=False)")
                     continue
             elif pnl is not None and is_breakeven_from_trade(symbol, info, closing_price):
-                print_with_date(f"[BREAKEVEN] Reopening {symbol} {pid}")
-                contracts = CONTRACTS_MAP.get(symbol, 1)
-                new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
-                if new_pos_id and new_closing_order_id:
-                    positions[symbol][pid] = {
-                        "position_id": new_pos_id,
-                        "opening_order_id": new_opening_order_id,
-                        "closing_order_id": new_closing_order_id,
-                        "side": info["side"],
-                        "callback": info["callback"],
-                        "active": True,
-                        "opening_price" : opening_price,
-                        "trail_value" : trail_value
-                    }
-                    position_info = positions[symbol][pid]
-                    update_position(pid, position_info, symbol)
-                    all_closed = False
+                if REOPEN_ON_BREAKEVEN:
+                    print_with_date(f"[BREAKEVEN] Reopening {symbol} {pid}")
+                    contracts = CONTRACTS_MAP.get(symbol, 1)
+                    new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
+                    if new_pos_id and new_closing_order_id:
+                        positions[symbol][pid] = {
+                            "position_id": new_pos_id,
+                            "opening_order_id": new_opening_order_id,
+                            "closing_order_id": new_closing_order_id,
+                            "side": info["side"],
+                            "callback": info["callback"],
+                            "active": True,
+                            "opening_price" : opening_price,
+                            "trail_value" : trail_value
+                        }
+                        position_info = positions[symbol][pid]
+                        update_position(pid, position_info, symbol)
+                        all_closed = False
+                        continue
+                else:
+                    print_with_date(f"[BREAKEVEN] Not reopening {symbol} {pid} (REOPEN_ON_BREAKEVEN=False)")
                     continue
             else:
                 print_with_date(f"[LOSS] Not reopening {symbol} {pid}")
