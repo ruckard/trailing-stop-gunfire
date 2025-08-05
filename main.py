@@ -130,7 +130,7 @@ def calculate_easy_trend6_with_rsi(symbol, lookback=50, rsi_period=14,
             vol_adj_slope = mean_log_ret / (np.std(segment) + 1e-8)
 
             segment_slopes.append(vol_adj_slope)
-            print_with_date(
+            debug(
                 f"[DEBUG EASY TREND6] {symbol} | Window {i+1}/{len(values)-window_size+1} | "
                 f"MeanLogRet={mean_log_ret:.6f}, VolAdjSlope={vol_adj_slope:.6f}"
             )
@@ -211,7 +211,7 @@ def calculate_easy_trend5_with_rsi(symbol, lookback=50, rsi_period=14,
             vol_adj_slope = mean_log_ret / (np.std(segment) + 1e-8)
 
             segment_slopes.append(vol_adj_slope)
-            print_with_date(
+            debug(
                 f"[DEBUG EASY TREND5] {symbol} | Window {i+1}/{len(values)-window_size+1} | "
                 f"MeanLogRet={mean_log_ret:.6f}, VolAdjSlope={vol_adj_slope:.6f}"
             )
@@ -293,7 +293,7 @@ def calculate_easy_trend4_with_rsi(symbol, lookback=50, rsi_period=14,
             # Volatility adjustment: divide by stdev of segment prices
             vol_adj_slope = mean_log_ret / (np.std(segment) + 1e-8)
 
-            print_with_date(
+            debug(
                 f"[DEBUG EASY TREND4] {symbol} | Segment {i+1}/{num_segments} | "
                 f"MeanLogRet={mean_log_ret:.6f}, VolAdjSlope={vol_adj_slope:.6f}"
             )
@@ -374,7 +374,7 @@ def calculate_easy_trend3_with_rsi(symbol, lookback=50, rsi_period=14,
             raw_slope = end_price - start_price
             normalized_slope = raw_slope / mean_price
 
-            print_with_date(
+            debug(
                 f"[DEBUG EASY TREND3] {symbol} | Segment {i+1}/{num_segments} | "
                 f"Start={start_price:.4f}, End={end_price:.4f}, "
                 f"RawSlope={raw_slope:.6f}, NormSlope={normalized_slope:.6f}"
@@ -457,7 +457,7 @@ def calculate_easy_trend2_with_rsi(symbol, lookback=50, rsi_period=14,
             normalized_slope = raw_slope / mean_price
 
             # Debug print for each segment
-            print_with_date(
+            debug(
                 f"[DEBUG EASY TREND2] {symbol} | Segment {i+1}/{num_segments} | "
                 f"Start={start_price:.4f}, End={end_price:.4f}, "
                 f"RawSlope={raw_slope:.6f}, NormSlope={normalized_slope:.6f}"
@@ -539,7 +539,7 @@ def calculate_easy_trend_with_rsi(symbol, lookback=50, rsi_period=14,
             normalized_slope = raw_slope / mean_price
 
             # Debug print for each segment
-            print_with_date(
+            debug(
                 f"[DEBUG EASY TREND] {symbol} | Segment {i+1}/{num_segments} | "
                 f"Start={start_price:.4f}, End={end_price:.4f}, "
                 f"RawSlope={raw_slope:.6f}, NormSlope={normalized_slope:.6f}"
