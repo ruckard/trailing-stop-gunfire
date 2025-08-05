@@ -976,6 +976,10 @@ DEFAULT_VOL_TOP_PERCENTILE = 90
 DEFAULT_REOPEN_ON_WIN = False
 DEFAULT_REOPEN_ON_BREAKEVEN = False
 
+DEFAULT_RANGE_ENTRY_OFFSET_PCT = 0.5
+DEFAULT_RANGE_TAKE_PROFIT_PCT = 0.7
+DEFAULT_STOP_LOSS_PCT = 0.5
+
 # === Check if override_config.py exists and load values if present ===
 if os.path.exists('override_config.py'):
     from override_config import (
@@ -1031,6 +1035,21 @@ try:
 except ImportError:
     OV_REOPEN_ON_BREAKEVEN = None
 
+try:
+    from override_config import RANGE_ENTRY_OFFSET_PCT as OV_RANGE_ENTRY_OFFSET_PCT
+except ImportError:
+    OV_RANGE_ENTRY_OFFSET_PCT = None
+
+try:
+    from override_config import RANGE_TAKE_PROFIT_PCT as OV_RANGE_TAKE_PROFIT_PCT
+except ImportError:
+    OV_RANGE_TAKE_PROFIT_PCT = None
+
+try:
+    from override_config import RANGE_STOP_LOSS_PCT as OV_RANGE_STOP_LOSS_PCT
+except ImportError:
+    OV_RANGE_STOP_LOSS_PCT = None
+
 # === Final Config Values (Override if provided) ===
 SYMBOL_CONFIGS = OV_SYMBOL_CONFIGS if OV_SYMBOL_CONFIGS is not None else DEFAULT_SYMBOL_CONFIGS
 API_DELAY_MS = OV_API_DELAY_MS if OV_API_DELAY_MS is not None else DEFAULT_API_DELAY_MS
@@ -1044,6 +1063,9 @@ VOL_BOTTOM_PERCENTILE = OV_VOL_BOTTOM_PERCENTILE if OV_VOL_BOTTOM_PERCENTILE is 
 VOL_TOP_PERCENTILE = OV_VOL_TOP_PERCENTILE if OV_VOL_TOP_PERCENTILE is not None else DEFAULT_VOL_TOP_PERCENTILE
 REOPEN_ON_WIN = OV_REOPEN_ON_WIN if OV_REOPEN_ON_WIN is not None else DEFAULT_REOPEN_ON_WIN
 REOPEN_ON_BREAKEVEN = OV_REOPEN_ON_BREAKEVEN if OV_REOPEN_ON_BREAKEVEN is not None else DEFAULT_REOPEN_ON_BREAKEVEN
+RANGE_ENTRY_OFFSET_PCT = OV_RANGE_ENTRY_OFFSET_PCT if OV_RANGE_ENTRY_OFFSET_PCT is not None else DEFAULT_RANGE_ENTRY_OFFSET_PCT
+RANGE_TAKE_PROFIT_PCT = OV_RANGE_TAKE_PROFIT_PCT if OV_RANGE_TAKE_PROFIT_PCT is not None else DEFAULT_RANGE_TAKE_PROFIT_PCT
+RANGE_STOP_LOSS_PCT = OV_RANGE_STOP_LOSS_PCT if OV_RANGE_STOP_LOSS_PCT is not None else DEFAULT_RANGE_STOP_LOSS_PCT
 
 CONTRACTS_MAP = {}
 CONTRACT_SIZES = {}
@@ -1779,7 +1801,7 @@ def place_all_positions(symbol, sides=("LONG", "SHORT")):
     if trend_type == "trend":
         place_trend_positions(symbol, sides)
     elif trend_type == "range":
-        place_range_positions(symbol, sides)
+        place_range_positions(symbol, sides, entry_offset_pct=RANGE_ENTRY_OFFSET_PCT, take_profit_pct=RANGE_TAKE_PROFIT_PCT, stop_loss_pct=RANGE_STOP_LOSS_PCT)
     else:
         print_with_date(f"[SKIP] Could not classify trend/range for {symbol}")
 

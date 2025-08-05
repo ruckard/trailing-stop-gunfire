@@ -46,3 +46,8 @@ REOPEN_ON_WIN = False
 # Control whether to reopen trades automatically after a BREAKEVEN
 # Default: False
 REOPEN_ON_BREAKEVEN = False
+
+# Range settings
+DEFAULT_RANGE_ENTRY_OFFSET_PCT = 0.5
+DEFAULT_RANGE_TAKE_PROFIT_PCT = 0.7
+DEFAULT_STOP_LOSS_PCT = 0.5
