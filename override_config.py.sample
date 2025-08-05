@@ -42,3 +42,7 @@ VOL_TOP_PERCENTILE = 85
 # Control whether to reopen trades automatically after a WIN
 # Default: False
 REOPEN_ON_WIN = False
+
+# Control whether to reopen trades automatically after a BREAKEVEN
+# Default: False
+REOPEN_ON_BREAKEVEN = False
