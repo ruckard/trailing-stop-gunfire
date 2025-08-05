@@ -939,7 +939,7 @@ DEFAULT_ATR_MA_PERIOD = 48
 DEFAULT_VOL_BOTTOM_PERCENTILE = 10
 DEFAULT_VOL_TOP_PERCENTILE = 90
 
-DEFAULT_REOPEN_ON_WIN = True
+DEFAULT_REOPEN_ON_WIN = False
 
 # === Check if override_config.py exists and load values if present ===
 if os.path.exists('override_config.py'):
