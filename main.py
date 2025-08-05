@@ -98,6 +98,23 @@ def get_atr(symbol, period=14):
         print_with_date(f"[ATR ERROR] {symbol}: {e}")
         return Decimal("0")
 
+def classify_trend_or_range(symbol, lookback=50, threshold=0.0003):
+    """
+    Classifies symbol as 'trend' or 'range' based on trend strength.
+    Returns: 'trend', 'range', or 'unknown'
+    """
+    try:
+        score = calculate_easy_trend6_with_rsi(symbol, lookback=lookback)
+        if score == 0.0:
+            return "range"
+        elif abs(score) >= threshold:
+            return "trend"
+        else:
+            return "range"
+    except Exception as e:
+        print_with_date(f"[ERROR] Classify failed for {symbol}: {e}")
+        return "unknown"
+
 def calculate_easy_trend6_with_rsi(symbol, lookback=50, rsi_period=14,
                                    rsi_low_cutoff=30, rsi_high_cutoff=70,
                                    window_size=5):
@@ -1737,6 +1754,16 @@ def place_all_positions(symbol, sides=("LONG", "SHORT")):
     print_with_date(f"[STARTING NEW {symbol} CYCLE]")
     positions[symbol].clear()
     clear_positions(symbol)
+    trend_type = classify_trend_or_range(symbol)
+
+    if trend_type == "trend":
+        place_trend_positions(symbol, sides)
+    elif trend_type == "range":
+        place_range_positions(symbol, sides)
+    else:
+        print_with_date(f"[SKIP] Could not classify trend/range for {symbol}")
+
+def place_trend_positions(symbol, sides):
     for i, callback in enumerate(TRAILING_STOPS_MAP[symbol]):
         #for side in ["LONG"]:
         for side in sides:
@@ -1761,6 +1788,10 @@ def place_all_positions(symbol, sides=("LONG", "SHORT")):
             }
             position_info = positions[symbol][pid]
             update_position(pid, position_info, symbol)
+
+def place_range_positions(symbol, sides):
+    print_with_date(f"[RANGE STRATEGY] Not implemented yet for {symbol}")
+    # You could place smaller take-profit orders or limit entries around mean price
 
 # === Check and Manage Positions ===
 def check_positions(symbol):
@@ -1977,6 +2008,9 @@ def start_new_cycle(resume=False):
         print_with_date(f"[NEW] New cycle with LONG symbols: {long_symbols}")
         print_with_date(f"[NEW] New cycle with SHORT symbols: {short_symbols}")
         print_with_date(f"[NEW] MaxExpectedLoss: {MAX_EXPECTED_LOSS:.2f} USDT")
+        for symbol in symbols:
+            trend_type = classify_trend_or_range(symbol)
+            print_with_date(f"[CLASSIFY] {symbol} : {trend_type.upper()}")
 
     for symbol in symbols:
         if symbol not in positions:
