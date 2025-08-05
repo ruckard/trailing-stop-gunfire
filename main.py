@@ -1809,9 +1809,81 @@ def place_trend_positions(symbol, sides):
             position_info = positions[symbol][pid]
             update_position(pid, position_info, symbol)
 
-def place_range_positions(symbol, sides):
-    print_with_date(f"[RANGE STRATEGY] Not implemented yet for {symbol}")
-    # You could place smaller take-profit orders or limit entries around mean price
+def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
+                          entry_offset_pct=0.5, take_profit_pct=0.7, stop_loss_pct=0.5):
+    """
+    Place range-trading orders: enter near support/resistance with tight SL/TP.
+    """
+
+    df = fetch_4h_ohlcv(symbol)
+    if df is None or df.empty or len(df) < lookback:
+        print_with_date(f"[RANGE STRATEGY] Insufficient data for {symbol}")
+        return
+
+    recent = df.tail(lookback)
+    high = recent['high'].max()
+    low = recent['low'].min()
+    range_mid = (high + low) / 2
+
+    contracts = CONTRACTS_MAP.get(symbol, 1)
+
+    price = get_current_price(symbol)
+    if price is None:
+        print_with_date(f"[RANGE STRATEGY] Failed to fetch price for {symbol}")
+        return
+
+    for i, side in enumerate(sides):
+        if side == "LONG":
+            entry_price = range_mid * (1 - entry_offset_pct / 100)
+            take_profit = entry_price * (1 + take_profit_pct / 100)
+            stop_loss = entry_price * (1 - stop_loss_pct / 100)
+            order_side = "BUY"
+        elif side == "SHORT":
+            entry_price = range_mid * (1 + entry_offset_pct / 100)
+            take_profit = entry_price * (1 - take_profit_pct / 100)
+            stop_loss = entry_price * (1 + stop_loss_pct / 100)
+            order_side = "SELL"
+        else:
+            continue
+
+        cl_order_id = f"{symbol}-range-{side.lower()}-{i}-{int(time.time())}"
+
+        print_with_date(
+            f"[RANGE STRATEGY] {symbol} {side} | Entry: {entry_price:.4f}, "
+            f"TP: {take_profit:.4f}, SL: {stop_loss:.4f}, Qty: {contracts}"
+        )
+
+        # You may need to customize this to your real API structure:
+        place_range_order(symbol=symbol,
+                          side=order_side,
+                          size=contracts,
+                          entry_price=entry_price,
+                          take_profit=take_profit,
+                          stop_loss=stop_loss,
+                          cl_order_id=cl_order_id)
+
+        # Optionally track position:
+        pid = f"range-{side.lower()}-{i}"
+        positions[symbol][pid] = {
+            "position_id": cl_order_id,
+            "opening_order_id": cl_order_id,
+            "closing_order_id": None,
+            "side": side,
+            "callback": None,
+            "active": True,
+            "opening_price": entry_price,
+            "trail_value": None,
+            "opened_at": time.time()
+        }
+        update_position(pid, positions[symbol][pid], symbol)
+
+def place_range_order(symbol, side, size, entry_price, take_profit, stop_loss, cl_order_id):
+    """
+    Submit a limit order with TP/SL as separate OCO or algo bracket order.
+    You need to adapt this to your exchange's order interface.
+    """
+    print_with_date(f"[MOCK ORDER] {side} {symbol} @ {entry_price:.4f} → TP: {take_profit:.4f}, SL: {stop_loss:.4f}")
+    # Place main limit order and attach TP/SL using bracket/OCO or custom logic.
 
 # === Check and Manage Positions ===
 def check_positions(symbol):
