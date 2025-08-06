@@ -1877,7 +1877,7 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
 
         # You may need to customize this to your real API structure:
         place_range_order(symbol=symbol,
-                          side=order_side,
+                          position_side=order_side,
                           contracts=contracts,
                           entry_price=entry_price,
                           take_profit=take_profit,
