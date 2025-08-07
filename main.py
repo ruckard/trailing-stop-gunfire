@@ -55,6 +55,7 @@ def fetch_4h_ohlcv_real(symbol, limit=100):
         return None
 
     df = pd.DataFrame(data, columns=["timestamp", "open", "high", "low", "close", "volume"])
+    df = df.sort_values('timestamp')
     return df
 
 def fetch_4h_ohlcv(symbol, limit=100):
