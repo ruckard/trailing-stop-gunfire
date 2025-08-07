@@ -2154,8 +2154,8 @@ def start_new_cycle(resume=False):
             clear_positions(symbol)
         symbols, long_symbols, short_symbols = filter_symbols_by_rank(
             base_symbols,
-            long_top_number=3,
-            short_top_number=3,
+            long_top_number=6,
+            short_top_number=6,
             rank_type='EASY6',
             vol_bottom_percentile = VOL_BOTTOM_PERCENTILE,
             vol_top_percentile = VOL_TOP_PERCENTILE
