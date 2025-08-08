@@ -1216,6 +1216,21 @@ def get_available_balance(currency="USDT"):
         print_with_date(f"[BALANCE ERROR] {e}")
         return Decimal("0")
 
+def get_market_summary():
+    try:
+        url = f"{BASE_URL}/api/v2.2/market_summary"
+        params = {"listFullAttributes": "true"}
+        response = throttled_request("GET", url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        if not data:
+            print_with_date("[ERROR] No data received from market_summary.")
+            return []
+        return data
+    except Exception as e:
+        print_with_date(f"[ERROR] Failed to fetch market summary: {e}")
+        return []
+
 def fetch_top_symbols_by_volume(limit=5):
     try:
         url = f"{BASE_URL}/api/v2.2/market_summary"
@@ -2227,26 +2242,21 @@ def start_new_cycle(resume=False):
         init_known_symbols_db()
 
         # 2️⃣ Fetch market summary from BTSE
-        try:
-            resp = requests.get("https://api.btse.com/futures/api/v2.2/market_summary", timeout=10)
-            resp.raise_for_status()
-            market_summary = resp.json()
-        except Exception as e:
-            print_with_date(f"[ERROR] Failed to fetch market summary: {e}")
+        market_summary = get_market_summary()
+        if market_summary is None:
             return None, None, None
 
-        # 3️⃣ Filter symbols older than MIN_CONTRACT_AGE_DAYS
-        eligible_symbols = filter_old_symbols(market_summary)
+        # 3️⃣ Filter symbols by age and volume using the new helper
+        filtered_symbols = filter_symbols_by_age_and_volume(market_summary)
 
-        # 4️⃣ Update DB registry with eligible symbols
-        update_symbol_registry(eligible_symbols)
+        # 4️⃣ Update DB registry with filtered symbols
+        update_symbol_registry(filtered_symbols)
 
         # 5️⃣ Setup modes for new symbols (mockup)
         setup_symbol_modes()
 
         # 6️⃣ Get only 'ready' symbols for trading
         base_symbols = get_ready_symbols()
-        # base_symbols = get_final_symbol_list()
         # Forget about old trades if we are starting a new cycle
         positions = {}
         for symbol in base_symbols:
