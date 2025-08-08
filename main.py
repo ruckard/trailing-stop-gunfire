@@ -4,7 +4,7 @@ import hashlib
 import requests
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import sqlite3
 from decimal import Decimal, getcontext, ROUND_FLOOR
 import traceback
@@ -924,6 +924,63 @@ def clear_positions(symbol):
     conn.commit()
     conn.close()
 
+def init_known_symbols_db():
+    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS symbols (
+            symbol TEXT PRIMARY KEY,
+            status TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def update_symbol_registry(symbols):
+    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
+    c = conn.cursor()
+
+    for sym in symbols:
+        c.execute("SELECT status FROM symbols WHERE symbol=?", (sym,))
+        row = c.fetchone()
+        if not row:
+            # new symbol → status = 'new'
+            c.execute("INSERT INTO symbols (symbol, status) VALUES (?, ?)", (sym, "new"))
+
+    conn.commit()
+    conn.close()
+
+def setup_symbol_modes():
+    """Mockup: For now, automatically convert all 'new' symbols to 'ready'."""
+    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT symbol FROM symbols WHERE status='new'")
+    new_symbols = [r[0] for r in c.fetchall()]
+
+    for sym in new_symbols:
+        print(f"[MOCK SETUP] Setting up trading mode for {sym} → status = 'ready'")
+        c.execute("UPDATE symbols SET status='ready' WHERE symbol=?", (sym,))
+
+    conn.commit()
+    conn.close()
+
+def get_ready_symbols():
+    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT symbol FROM symbols WHERE status='ready'")
+    result = [r[0] for r in c.fetchall()]
+    conn.close()
+    return result
+
+def filter_old_symbols(summary_data):
+    cutoff = datetime.now(timezone.utc) - timedelta(days=MIN_CONTRACT_AGE_DAYS)
+    eligible = []
+    for entry in summary_data:
+        contract_start = datetime.fromtimestamp(entry.get("contractStart", 0) / 1000, tz=timezone.utc)
+        if contract_start <= cutoff:
+            eligible.append(entry["symbol"])
+    return eligible
+
 def get_active_symbols_from_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -983,6 +1040,9 @@ DEFAULT_RANGE_STOP_LOSS_PCT = 0.5
 
 DEFAULT_MAXIMUM_LONG_TRADES_NUMBER = 6
 DEFAULT_MAXIMUM_SHORT_TRADES_NUMBER = 6
+
+KNOWN_SYMBOLS_DB_PATH = "known_symbols.db"
+MIN_CONTRACT_AGE_DAYS = 15
 
 # === Check if override_config.py exists and load values if present ===
 if os.path.exists('override_config.py'):
@@ -2163,7 +2223,30 @@ def start_new_cycle(resume=False):
         print_with_date(f"[RESUME] Resuming cycle with LONG symbols: {long_symbols}")
         print_with_date(f"[RESUME] Resuming cycle with SHORT symbols: {short_symbols}")
     else:
-        base_symbols = get_final_symbol_list()
+        # 1️⃣ Init DB
+        init_known_symbols_db()
+
+        # 2️⃣ Fetch market summary from BTSE
+        try:
+            resp = requests.get("https://api.btse.com/futures/api/v2.2/market_summary", timeout=10)
+            resp.raise_for_status()
+            market_summary = resp.json()
+        except Exception as e:
+            print_with_date(f"[ERROR] Failed to fetch market summary: {e}")
+            return None, None, None
+
+        # 3️⃣ Filter symbols older than MIN_CONTRACT_AGE_DAYS
+        eligible_symbols = filter_old_symbols(market_summary)
+
+        # 4️⃣ Update DB registry with eligible symbols
+        update_symbol_registry(eligible_symbols)
+
+        # 5️⃣ Setup modes for new symbols (mockup)
+        setup_symbol_modes()
+
+        # 6️⃣ Get only 'ready' symbols for trading
+        base_symbols = get_ready_symbols()
+        # base_symbols = get_final_symbol_list()
         # Forget about old trades if we are starting a new cycle
         positions = {}
         for symbol in base_symbols:
