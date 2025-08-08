@@ -981,6 +981,9 @@ DEFAULT_RANGE_ENTRY_OFFSET_PCT = 0.5
 DEFAULT_RANGE_TAKE_PROFIT_PCT = 0.7
 DEFAULT_RANGE_STOP_LOSS_PCT = 0.5
 
+DEFAULT_MAXIMUM_LONG_TRADES_NUMBER = 6
+DEFAULT_MAXIMUM_SHORT_TRADES_NUMBER = 6
+
 # === Check if override_config.py exists and load values if present ===
 if os.path.exists('override_config.py'):
     from override_config import (
@@ -1051,6 +1054,16 @@ try:
 except ImportError:
     OV_RANGE_STOP_LOSS_PCT = None
 
+try:
+    from override_config import MAXIMUM_LONG_TRADES_NUMBER as OV_MAXIMUM_LONG_TRADES_NUMBER
+except ImportError:
+    OV_MAXIMUM_LONG_TRADES_NUMBER = None
+
+try:
+    from override_config import MAXIMUM_SHORT_TRADES_NUMBER as OV_MAXIMUM_SHORT_TRADES_NUMBER
+except ImportError:
+    OV_MAXIMUM_SHORT_TRADES_NUMBER = None
+
 # === Final Config Values (Override if provided) ===
 SYMBOL_CONFIGS = OV_SYMBOL_CONFIGS if OV_SYMBOL_CONFIGS is not None else DEFAULT_SYMBOL_CONFIGS
 API_DELAY_MS = OV_API_DELAY_MS if OV_API_DELAY_MS is not None else DEFAULT_API_DELAY_MS
@@ -1067,6 +1080,8 @@ REOPEN_ON_BREAKEVEN = OV_REOPEN_ON_BREAKEVEN if OV_REOPEN_ON_BREAKEVEN is not No
 RANGE_ENTRY_OFFSET_PCT = OV_RANGE_ENTRY_OFFSET_PCT if OV_RANGE_ENTRY_OFFSET_PCT is not None else DEFAULT_RANGE_ENTRY_OFFSET_PCT
 RANGE_TAKE_PROFIT_PCT = OV_RANGE_TAKE_PROFIT_PCT if OV_RANGE_TAKE_PROFIT_PCT is not None else DEFAULT_RANGE_TAKE_PROFIT_PCT
 RANGE_STOP_LOSS_PCT = OV_RANGE_STOP_LOSS_PCT if OV_RANGE_STOP_LOSS_PCT is not None else DEFAULT_RANGE_STOP_LOSS_PCT
+MAXIMUM_LONG_TRADES_NUMBER = OV_MAXIMUM_LONG_TRADES_NUMBER if OV_MAXIMUM_LONG_TRADES_NUMBER is not None else DEFAULT_MAXIMUM_LONG_TRADES_NUMBER
+MAXIMUM_SHORT_TRADES_NUMBER = OV_MAXIMUM_SHORT_TRADES_NUMBER if OV_MAXIMUM_SHORT_TRADES_NUMBER is not None else DEFAULT_MAXIMUM_SHORT_TRADES_NUMBER
 
 CONTRACTS_MAP = {}
 CONTRACT_SIZES = {}
@@ -2155,8 +2170,8 @@ def start_new_cycle(resume=False):
             clear_positions(symbol)
         symbols, long_symbols, short_symbols = filter_symbols_by_rank(
             base_symbols,
-            long_top_number=6,
-            short_top_number=6,
+            long_top_number=MAXIMUM_LONG_TRADES_NUMBER,
+            short_top_number=MAXIMUM_SHORT_TRADES_NUMBER,
             rank_type='EASY6',
             vol_bottom_percentile = VOL_BOTTOM_PERCENTILE,
             vol_top_percentile = VOL_TOP_PERCENTILE
