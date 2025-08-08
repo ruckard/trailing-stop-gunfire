@@ -2,3 +2,4 @@ positions.db
 config.py
 __pycache__
 override_config.py
+known_symbols.db
