@@ -1246,6 +1246,12 @@ OHLCV_CACHE_TIMEOUT = timedelta(minutes=5)
 TRENDRANGE_CACHE = {}  # symbol → (timestamp, result)
 TRENDRANGE_CACHE_TIMEOUT = 5 * 60  # 5 minutes
 
+MARKET_SUMMARY_CACHE = {
+    "data": None,
+    "timestamp": None,
+}
+MARKET_SUMMARY_CACHE_TIMEOUT = timedelta(hours=1)
+
 def get_available_balance(currency="USDT"):
     """
     Query the CROSS wallet and return the available balance for the given currency.
@@ -1306,7 +1312,18 @@ def get_available_balance(currency="USDT"):
         print_with_date(f"[BALANCE ERROR] {e}")
         return Decimal("0")
 
+def prune_market_summary_cache():
+    if MARKET_SUMMARY_CACHE["timestamp"] is None:
+        return
+    if datetime.utcnow() - MARKET_SUMMARY_CACHE["timestamp"] >= MARKET_SUMMARY_CACHE_TIMEOUT:
+        MARKET_SUMMARY_CACHE["data"] = None
+        MARKET_SUMMARY_CACHE["timestamp"] = None
+
 def get_market_summary():
+    prune_market_summary_cache()
+    if MARKET_SUMMARY_CACHE["data"] is not None:
+        return MARKET_SUMMARY_CACHE["data"]
+
     try:
         url = f"{BASE_URL}/api/v2.2/market_summary"
         params = {"listFullAttributes": "true"}
@@ -1316,6 +1333,9 @@ def get_market_summary():
         if not data:
             print_with_date("[ERROR] No data received from market_summary.")
             return []
+        # Cache fresh data with current timestamp
+        MARKET_SUMMARY_CACHE["data"] = data
+        MARKET_SUMMARY_CACHE["timestamp"] = datetime.utcnow()
         return data
     except Exception as e:
         print_with_date(f"[ERROR] Failed to fetch market summary: {e}")
