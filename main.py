@@ -1233,11 +1233,7 @@ def get_market_summary():
 
 def fetch_top_symbols_by_volume(limit=5):
     try:
-        url = f"{BASE_URL}/api/v2.2/market_summary"
-        params = {"listFullAttributes": "true"}
-        response = throttled_request("GET", url, params=params)
-        response.raise_for_status()
-        data = response.json()
+        data = get_market_summary()
         if not data:
             print_with_date("[ERROR] No data received from market_summary.")
             return []
