@@ -4,7 +4,7 @@ import hashlib
 import requests
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import sqlite3
 from decimal import Decimal, getcontext, ROUND_FLOOR
 import traceback
@@ -924,6 +924,153 @@ def clear_positions(symbol):
     conn.commit()
     conn.close()
 
+def init_known_symbols_db():
+    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS symbols (
+            symbol TEXT PRIMARY KEY,
+            status TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def update_symbol_registry(symbols):
+    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
+    c = conn.cursor()
+
+    for sym in symbols:
+        c.execute("SELECT status FROM symbols WHERE symbol=?", (sym,))
+        row = c.fetchone()
+        if not row:
+            # new symbol → status = 'new'
+            c.execute("INSERT INTO symbols (symbol, status) VALUES (?, ?)", (sym, "new"))
+
+    conn.commit()
+    conn.close()
+
+def set_symbol_as_ready(symbol):
+    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
+    c = conn.cursor()
+
+    # Check if the symbol already exists
+    c.execute("SELECT 1 FROM symbols WHERE symbol=?", (symbol,))
+    exists = c.fetchone() is not None
+
+    if exists:
+        c.execute("UPDATE symbols SET status=? WHERE symbol=?", ("ready", symbol))
+    else:
+        c.execute("INSERT INTO symbols (symbol, status) VALUES (?, ?)", (symbol, "ready"))
+
+    conn.commit()
+    conn.close()
+
+# === Setup helpers from symbols_setup.py ===
+import json  # ensure json is imported in main.py if not already
+
+def update_leverage(symbol):
+    url_path = '/api/v2.2/leverage'
+    full_url = BASE_URL + url_path
+
+    params = {"symbol": symbol, "marginMode": "ISOLATED", "leverage": "1"}
+    nonce = str(int(time.time() * 1000))
+    body_str = json.dumps(params, separators=(',', ':'))
+    sig = generate_signature(API_SECRET, url_path, nonce, body_str)
+    headers = {
+        'request-api': API_KEY,
+        'request-nonce': nonce,
+        'request-sign': sig,
+        'Content-Type': 'application/json'
+    }
+
+    response = throttled_request("POST", full_url, headers=headers, data=body_str)
+    print_with_date(f"[SETUP] {symbol}: Margin mode set to: isolated. Leverage set to 1x.")
+    time.sleep(1)
+
+def update_position_mode(symbol):
+    url_path = '/api/v2.2/position_mode'
+    full_url = BASE_URL + url_path
+
+    params = {"symbol": symbol, "positionMode": "ISOLATED"}
+    nonce = str(int(time.time() * 1000))
+    body_str = json.dumps(params, separators=(',', ':'))
+    sig = generate_signature(API_SECRET, url_path, nonce, body_str)
+    headers = {
+        'request-api': API_KEY,
+        'request-nonce': nonce,
+        'request-sign': sig,
+        'Content-Type': 'application/json'
+    }
+
+    response = throttled_request("POST", full_url, headers=headers, data=body_str)
+    print_with_date(f"[SETUP] {symbol}: Position mode set to ISOLATED")
+    time.sleep(1)
+
+def update_leverage_again(symbol):
+    url_path = '/api/v2.2/leverage'
+    full_url = BASE_URL + url_path
+
+    params = {
+        "symbol": symbol,
+        "positionMode": "ISOLATED",
+        "marginMode": "ISOLATED",
+        "leverage": "1"
+    }
+    nonce = str(int(time.time() * 1000))
+    body_str = json.dumps(params, separators=(',', ':'))
+    sig = generate_signature(API_SECRET, url_path, nonce, body_str)
+    headers = {
+        'request-api': API_KEY,
+        'request-nonce': nonce,
+        'request-sign': sig,
+        'Content-Type': 'application/json'
+    }
+
+    response = throttled_request("POST", full_url, headers=headers, data=body_str)
+    print_with_date(f"[SETUP] {symbol}: (AGAIN) Margin mode set to: isolated. Leverage set to 1x.")
+
+def update_symbol_settings(symbol):
+    try:
+        update_leverage(symbol)
+        update_position_mode(symbol)
+        update_leverage_again(symbol)
+    except Exception as e:
+        print_with_date(f"[ERROR] {symbol}: setup failed: {e}")
+
+def setup_symbol_modes():
+    new_symbols = get_new_symbols()
+
+    for sym in new_symbols:
+        update_symbol_settings(sym)  # run the actual setup
+        print_with_date(f"[SETUP] {sym}: Setting up trading mode → status = 'ready'")
+        set_symbol_as_ready(sym)
+
+def get_new_symbols():
+    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT symbol FROM symbols WHERE status='new'")
+    result = [r[0] for r in c.fetchall()]
+    conn.close()
+    return result
+
+def get_ready_symbols():
+    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT symbol FROM symbols WHERE status='ready'")
+    result = [r[0] for r in c.fetchall()]
+    conn.close()
+    return result
+
+def filter_old_symbols(summary_data):
+    cutoff = datetime.now(timezone.utc) - timedelta(days=MIN_CONTRACT_AGE_DAYS)
+    eligible = []
+    for entry in summary_data:
+        contract_start = datetime.fromtimestamp(entry.get("contractStart", 0) / 1000, tz=timezone.utc)
+        if contract_start <= cutoff:
+            eligible.append(entry["symbol"])
+    return eligible
+
 def get_active_symbols_from_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -983,6 +1130,9 @@ DEFAULT_RANGE_STOP_LOSS_PCT = 0.5
 
 DEFAULT_MAXIMUM_LONG_TRADES_NUMBER = 6
 DEFAULT_MAXIMUM_SHORT_TRADES_NUMBER = 6
+
+KNOWN_SYMBOLS_DB_PATH = "known_symbols.db"
+MIN_CONTRACT_AGE_DAYS = 15
 
 # === Check if override_config.py exists and load values if present ===
 if os.path.exists('override_config.py'):
@@ -1156,13 +1306,24 @@ def get_available_balance(currency="USDT"):
         print_with_date(f"[BALANCE ERROR] {e}")
         return Decimal("0")
 
-def fetch_top_symbols_by_volume(limit=5):
+def get_market_summary():
     try:
         url = f"{BASE_URL}/api/v2.2/market_summary"
         params = {"listFullAttributes": "true"}
         response = throttled_request("GET", url, params=params)
         response.raise_for_status()
         data = response.json()
+        if not data:
+            print_with_date("[ERROR] No data received from market_summary.")
+            return []
+        return data
+    except Exception as e:
+        print_with_date(f"[ERROR] Failed to fetch market summary: {e}")
+        return []
+
+def fetch_top_symbols_by_volume(limit=5):
+    try:
+        data = get_market_summary()
         if not data:
             print_with_date("[ERROR] No data received from market_summary.")
             return []
@@ -1182,6 +1343,30 @@ def fetch_top_symbols_by_volume(limit=5):
     except Exception as e:
         print_with_date(f"[ERROR] Failed to fetch top volume symbols: {e}")
         return []
+
+def filter_symbols_by_age_and_volume(market_summary):
+    # Filter symbols older than MIN_CONTRACT_AGE_DAYS
+    aged_symbols = filter_old_symbols(market_summary)  # list of strings
+    aged_symbol_names = set(aged_symbols)
+
+    # Fetch top volume symbols (no filtering parameter)
+    top_symbols = fetch_top_symbols_by_volume(limit=TOP_SYMBOLS_BY_VOLUME)
+
+    # Keep only aged symbols from the top volume list
+    filtered_top_symbols = [s for s in top_symbols if s in aged_symbol_names]
+
+    # Add forced additional symbols
+    combined = filtered_top_symbols + ADDITIONAL_SYMBOLS
+
+    # Remove excluded and deduplicate
+    seen = set()
+    final = []
+    for s in combined:
+        if s not in EXCLUDED_SYMBOLS and s not in seen:
+            final.append(s)
+            seen.add(s)
+
+    return final
 
 def get_final_symbol_list():
     top_symbols = fetch_top_symbols_by_volume(limit=TOP_SYMBOLS_BY_VOLUME)
@@ -2163,7 +2348,25 @@ def start_new_cycle(resume=False):
         print_with_date(f"[RESUME] Resuming cycle with LONG symbols: {long_symbols}")
         print_with_date(f"[RESUME] Resuming cycle with SHORT symbols: {short_symbols}")
     else:
-        base_symbols = get_final_symbol_list()
+        # 1️⃣ Init DB
+        init_known_symbols_db()
+
+        # 2️⃣ Fetch market summary from BTSE
+        market_summary = get_market_summary()
+        if market_summary is None:
+            return None, None, None
+
+        # 3️⃣ Filter symbols by age and volume using the new helper
+        filtered_symbols = filter_symbols_by_age_and_volume(market_summary)
+
+        # 4️⃣ Update DB registry with filtered symbols
+        update_symbol_registry(filtered_symbols)
+
+        # 5️⃣ Setup modes for new symbols (mockup)
+        setup_symbol_modes()
+
+        # 6️⃣ Get only 'ready' symbols for trading
+        base_symbols = get_ready_symbols()
         # Forget about old trades if we are starting a new cycle
         positions = {}
         for symbol in base_symbols:
