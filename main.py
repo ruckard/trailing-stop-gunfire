@@ -1255,22 +1255,20 @@ def fetch_top_symbols_by_volume(limit=5):
         return []
 
 def filter_symbols_by_age_and_volume(market_summary):
-    # 1️⃣ Filter symbols older than MIN_CONTRACT_AGE_DAYS (current logic)
-    aged_symbols = filter_old_symbols(market_summary)
+    # Filter symbols older than MIN_CONTRACT_AGE_DAYS
+    aged_symbols = filter_old_symbols(market_summary)  # list of strings
+    aged_symbol_names = set(aged_symbols)
 
-    # Extract just the symbol names
-    aged_symbol_names = set(aged_symbols)  # already symbols as strings
+    # Fetch top volume symbols (no filtering parameter)
+    top_symbols = fetch_top_symbols_by_volume(limit=TOP_SYMBOLS_BY_VOLUME)
 
-    # 2️⃣ Fetch top volume symbols from aged symbols only
-    # This replicates the old get_final_symbol_list logic but limited to aged symbols
+    # Keep only aged symbols from the top volume list
+    filtered_top_symbols = [s for s in top_symbols if s in aged_symbol_names]
 
-    # Assume fetch_top_symbols_by_volume accepts a list of symbols to filter from
-    top_symbols = fetch_top_symbols_by_volume(limit=TOP_SYMBOLS_BY_VOLUME, symbols=aged_symbol_names)
+    # Add forced additional symbols
+    combined = filtered_top_symbols + ADDITIONAL_SYMBOLS
 
-    # Include additional forced symbols
-    combined = top_symbols + ADDITIONAL_SYMBOLS
-
-    # Remove excluded symbols and deduplicate while preserving order
+    # Remove excluded and deduplicate
     seen = set()
     final = []
     for s in combined:
