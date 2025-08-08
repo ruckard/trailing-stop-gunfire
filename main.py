@@ -1259,7 +1259,7 @@ def filter_symbols_by_age_and_volume(market_summary):
     aged_symbols = filter_old_symbols(market_summary)
 
     # Extract just the symbol names
-    aged_symbol_names = [s["symbol"] for s in aged_symbols]
+    aged_symbol_names = set(aged_symbols)  # already symbols as strings
 
     # 2️⃣ Fetch top volume symbols from aged symbols only
     # This replicates the old get_final_symbol_list logic but limited to aged symbols
