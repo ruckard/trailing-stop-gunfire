@@ -950,19 +950,96 @@ def update_symbol_registry(symbols):
     conn.commit()
     conn.close()
 
+# === Setup helpers from symbols_setup.py ===
+import json  # ensure json is imported in main.py if not already
+
+def update_leverage(symbol):
+    url_path = '/api/v2.2/leverage'
+    full_url = BASE_URL + url_path
+
+    params = {"symbol": symbol, "marginMode": "ISOLATED", "leverage": "1"}
+    nonce = str(int(time.time() * 1000))
+    body_str = json.dumps(params, separators=(',', ':'))
+    sig = generate_signature(API_SECRET, url_path, nonce, body_str)
+    headers = {
+        'request-api': API_KEY,
+        'request-nonce': nonce,
+        'request-sign': sig,
+        'Content-Type': 'application/json'
+    }
+
+    response = throttled_request("POST", full_url, headers=headers, data=body_str)
+    print_with_date(f"[SETUP] {symbol}: Margin mode set to: isolated. Leverage set to 1x.")
+    time.sleep(1)
+
+def update_position_mode(symbol):
+    url_path = '/api/v2.2/position_mode'
+    full_url = BASE_URL + url_path
+
+    params = {"symbol": symbol, "positionMode": "ISOLATED"}
+    nonce = str(int(time.time() * 1000))
+    body_str = json.dumps(params, separators=(',', ':'))
+    sig = generate_signature(API_SECRET, url_path, nonce, body_str)
+    headers = {
+        'request-api': API_KEY,
+        'request-nonce': nonce,
+        'request-sign': sig,
+        'Content-Type': 'application/json'
+    }
+
+    response = throttled_request("POST", full_url, headers=headers, data=body_str)
+    print_with_date(f"[SETUP] {symbol}: Position mode set to ISOLATED")
+    time.sleep(1)
+
+def update_leverage_again(symbol):
+    url_path = '/api/v2.2/leverage'
+    full_url = BASE_URL + url_path
+
+    params = {
+        "symbol": symbol,
+        "positionMode": "ISOLATED",
+        "marginMode": "ISOLATED",
+        "leverage": "1"
+    }
+    nonce = str(int(time.time() * 1000))
+    body_str = json.dumps(params, separators=(',', ':'))
+    sig = generate_signature(API_SECRET, url_path, nonce, body_str)
+    headers = {
+        'request-api': API_KEY,
+        'request-nonce': nonce,
+        'request-sign': sig,
+        'Content-Type': 'application/json'
+    }
+
+    response = throttled_request("POST", full_url, headers=headers, data=body_str)
+    print_with_date(f"[SETUP] {symbol}: (AGAIN) Margin mode set to: isolated. Leverage set to 1x.")
+
+def update_symbol_settings(symbol):
+    try:
+        update_leverage(symbol)
+        update_position_mode(symbol)
+        update_leverage_again(symbol)
+    except Exception as e:
+        print_with_date(f"[ERROR] {symbol}: setup failed: {e}")
+
 def setup_symbol_modes():
-    """Mockup: For now, automatically convert all 'new' symbols to 'ready'."""
-    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT symbol FROM symbols WHERE status='new'")
-    new_symbols = [r[0] for r in c.fetchall()]
+    new_symbols = get_new_symbols()
 
     for sym in new_symbols:
-        print(f"[MOCK SETUP] Setting up trading mode for {sym} → status = 'ready'")
+        update_symbol_settings(sym)  # run the actual setup
+        print_with_date(f"[SETUP] {sym}: Setting up trading mode → status = 'ready'")
         c.execute("UPDATE symbols SET status='ready' WHERE symbol=?", (sym,))
 
     conn.commit()
     conn.close()
+
+def get_new_symbols():
+    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT symbol FROM symbols WHERE status='new'")
+    result = [r[0] for r in c.fetchall()]
+    conn.close()
+    return result
 
 def get_ready_symbols():
     conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
