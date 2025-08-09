@@ -950,6 +950,15 @@ def update_symbol_registry(symbols):
     conn.commit()
     conn.close()
 
+def set_symbol_as_ready(symbol):
+    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
+    c = conn.cursor()
+
+    c.execute("INSERT INTO symbols (symbol, status) VALUES (?, ?)", (symbol, "ready"))
+
+    conn.commit()
+    conn.close()
+
 # === Setup helpers from symbols_setup.py ===
 import json  # ensure json is imported in main.py if not already
 
@@ -1028,10 +1037,7 @@ def setup_symbol_modes():
     for sym in new_symbols:
         update_symbol_settings(sym)  # run the actual setup
         print_with_date(f"[SETUP] {sym}: Setting up trading mode → status = 'ready'")
-        c.execute("UPDATE symbols SET status='ready' WHERE symbol=?", (sym,))
-
-    conn.commit()
-    conn.close()
+        set_symbol_as_ready(symbol)
 
 def get_new_symbols():
     conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
