@@ -29,7 +29,7 @@ def lock_guard(client_id):
         api_lock_release_lock(client_id)
 
 def throttled_request(method, url, **kwargs):
-    with lock_guard("ClientA"):
+    with lock_guard(CLIENT_NAME):
         return requests.request(method, url, timeout=30, **kwargs)
 
 def prune_ohlcv_cache():
@@ -1134,6 +1134,9 @@ DEFAULT_MAXIMUM_SHORT_TRADES_NUMBER = 6
 KNOWN_SYMBOLS_DB_PATH = "known_symbols.db"
 MIN_CONTRACT_AGE_DAYS = 15
 
+# Default client name is the directory name where script is running
+DEFAULT_CLIENT_NAME = os.path.basename(os.getcwd())
+
 # === Check if override_config.py exists and load values if present ===
 if os.path.exists('override_config.py'):
     from override_config import (
@@ -1214,6 +1217,11 @@ try:
 except ImportError:
     OV_MAXIMUM_SHORT_TRADES_NUMBER = None
 
+try:
+    from override_config import CLIENT_NAME as OV_CLIENT_NAME
+except ImportError:
+    OV_CLIENT_NAME = None
+
 # === Final Config Values (Override if provided) ===
 SYMBOL_CONFIGS = OV_SYMBOL_CONFIGS if OV_SYMBOL_CONFIGS is not None else DEFAULT_SYMBOL_CONFIGS
 API_DELAY_MS = OV_API_DELAY_MS if OV_API_DELAY_MS is not None else DEFAULT_API_DELAY_MS
@@ -1232,6 +1240,7 @@ RANGE_TAKE_PROFIT_PCT = OV_RANGE_TAKE_PROFIT_PCT if OV_RANGE_TAKE_PROFIT_PCT is 
 RANGE_STOP_LOSS_PCT = OV_RANGE_STOP_LOSS_PCT if OV_RANGE_STOP_LOSS_PCT is not None else DEFAULT_RANGE_STOP_LOSS_PCT
 MAXIMUM_LONG_TRADES_NUMBER = OV_MAXIMUM_LONG_TRADES_NUMBER if OV_MAXIMUM_LONG_TRADES_NUMBER is not None else DEFAULT_MAXIMUM_LONG_TRADES_NUMBER
 MAXIMUM_SHORT_TRADES_NUMBER = OV_MAXIMUM_SHORT_TRADES_NUMBER if OV_MAXIMUM_SHORT_TRADES_NUMBER is not None else DEFAULT_MAXIMUM_SHORT_TRADES_NUMBER
+CLIENT_NAME = OV_CLIENT_NAME if OV_CLIENT_NAME is not None else DEFAULT_CLIENT_NAME
 
 CONTRACTS_MAP = {}
 CONTRACT_SIZES = {}
