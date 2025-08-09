@@ -954,7 +954,14 @@ def set_symbol_as_ready(symbol):
     conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
     c = conn.cursor()
 
-    c.execute("INSERT INTO symbols (symbol, status) VALUES (?, ?)", (symbol, "ready"))
+    # Check if the symbol already exists
+    c.execute("SELECT 1 FROM symbols WHERE symbol=?", (symbol,))
+    exists = c.fetchone() is not None
+
+    if exists:
+        c.execute("UPDATE symbols SET status=? WHERE symbol=?", ("ready", symbol))
+    else:
+        c.execute("INSERT INTO symbols (symbol, status) VALUES (?, ?)", (symbol, "ready"))
 
     conn.commit()
     conn.close()
