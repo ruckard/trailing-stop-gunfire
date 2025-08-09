@@ -1037,7 +1037,7 @@ def setup_symbol_modes():
     for sym in new_symbols:
         update_symbol_settings(sym)  # run the actual setup
         print_with_date(f"[SETUP] {sym}: Setting up trading mode → status = 'ready'")
-        set_symbol_as_ready(symbol)
+        set_symbol_as_ready(sym)
 
 def get_new_symbols():
     conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
