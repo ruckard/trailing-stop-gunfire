@@ -54,3 +54,7 @@ RANGE_STOP_LOSS_PCT = 0.5
 
 MAXIMUM_LONG_TRADES_NUMBER = 6
 MAXIMUM_SHORT_TRADES_NUMBER = 6
+
+# This identifier must be unique
+# It defaults to the directory name where the script is run
+# CLIENT_NAME = "ClientA"
