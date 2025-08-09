@@ -2195,7 +2195,7 @@ def place_range_order(symbol, position_side, contracts, entry_price, take_profit
         if not isinstance(limit_data, list) or not limit_data:
             print_with_date("[ERROR] Unexpected limit order response.")
             return None
-        position_id = market_data[0].get('positionId')
+        position_id = limit_data[0].get('positionId')
         if not position_id:
             print_with_date("[ERROR] Missing position ID.")
             return None
