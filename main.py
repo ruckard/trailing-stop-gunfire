@@ -10,6 +10,7 @@ from decimal import Decimal, getcontext, ROUND_FLOOR
 import traceback
 import pandas as pd
 import numpy as np
+import math
 
 from contextlib import contextmanager
 from api_lock_client import api_lock_acquire_lock, api_lock_release_lock
@@ -2102,6 +2103,11 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
             order_side = "SELL"
         else:
             continue
+
+        # Ensure price decimal scale is the right one
+        entry_price = round(entry_price, int(-math.log10(MIN_PRICE_INCREMENTS[symbol])))
+        take_profit = round(take_profit, int(-math.log10(MIN_PRICE_INCREMENTS[symbol])))
+        stop_loss = round(stop_loss, int(-math.log10(MIN_PRICE_INCREMENTS[symbol])))
 
         cl_order_id = f"{symbol}-range-{side.lower()}-{i}-{int(time.time())}"
 
