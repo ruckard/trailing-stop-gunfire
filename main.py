@@ -1137,15 +1137,20 @@ MIN_CONTRACT_AGE_DAYS = 15
 # Default client name is the directory name where script is running
 DEFAULT_CLIENT_NAME = os.path.basename(os.getcwd())
 
-# === Check if override_config.py exists and load values if present ===
-if os.path.exists('override_config.py'):
-    from override_config import (
-        SYMBOL_CONFIGS as OV_SYMBOL_CONFIGS,
-        API_DELAY_MS as OV_API_DELAY_MS,
-        ATR_MA_PERIOD as OV_ATR_MA_PERIOD
-    )
-else:
-    OV_SYMBOL_CONFIGS = OV_API_DELAY_MS = OV_ATR_MA_PERIOD = None
+try:
+    from override_config import SYMBOL_CONFIGS as OV_SYMBOL_CONFIGS
+except ImportError:
+    OV_SYMBOL_CONFIGS = None
+
+try:
+    from override_config import API_DELAY_MS as OV_API_DELAY_MS
+except ImportError:
+    OV_API_DELAY_MS = None
+
+try:
+    from override_config import ATR_MA_PERIOD as OV_ATR_MA_PERIOD
+except ImportError:
+    OV_ATR_MA_PERIOD = None
 
 try:
     from override_config import TOP_SYMBOLS_BY_VOLUME as OV_TOP_SYMBOLS_BY_VOLUME
