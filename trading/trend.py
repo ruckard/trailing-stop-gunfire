@@ -1,3 +1,5 @@
+from exchange import btse as exchange
+
 def classify_trend_or_range_real(symbol, lookback=50, threshold=0.0003):
     """
     Classifies symbol as 'trend' or 'range' based on trend strength.
@@ -674,7 +676,7 @@ def calculate_atr(df, period=14, ma='SMA', ma_period=48):
     return df['ATR'].iloc[-1]
 
 def calculate_trailing_start_from_atr(symbol, multiplier=2.125, ma='HIGHEST', ma_period=48):
-    df = fetch_4h_ohlcv(symbol)
+    df = exchange.fetch_4h_ohlcv(symbol)
     if df is None:
         return None
     atr = calculate_atr(df, ma_period=ATR_MA_PERIOD, ma=ma)
