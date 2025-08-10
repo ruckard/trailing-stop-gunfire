@@ -37,14 +37,6 @@ class PriceFetchError(Exception):
 
 getcontext().prec = 16
 
-@contextmanager
-def lock_guard(client_id):
-    api_lock_acquire_lock(client_id)
-    try:
-        yield
-    finally:
-        api_lock_release_lock(client_id)
-
 def throttled_request(method, url, **kwargs):
     with lock_guard(CLIENT_NAME):
         return requests.request(method, url, timeout=30, **kwargs)
