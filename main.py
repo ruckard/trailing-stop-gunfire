@@ -20,7 +20,6 @@ from exchange.btse import (
     fetch_top_symbols_by_volume,
     fetch_contract_sizes,
     fetch_min_price_increments,
-    compute_contracts_from_prices,
     get_current_price,
     place_range_order,
     close_position,
@@ -1404,6 +1403,72 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
     print_with_date(f"[SYMBOLS] Selected LONG: {long_symbols} | SHORT: {short_symbols}")
 
     return final_symbols, long_symbols, short_symbols
+
+def compute_contracts_from_prices(symbols, contract_sizes):
+    prices = {}
+    notional_per_contract = {}
+    per_contract_losses = {}
+
+    for symbol in symbols:
+        price = get_current_price(symbol)
+        if price is None or symbol not in contract_sizes:
+            continue
+        price = Decimal(str(price))
+        size = contract_sizes[symbol]
+        notional = price * size
+        trail_percent = Decimal(str(TRAILING_STOPS_MAP.get(symbol, [1])[0])) / Decimal("100")
+
+        prices[symbol] = price
+        notional_per_contract[symbol] = notional
+        per_contract_losses[symbol] = notional * trail_percent
+
+    if not per_contract_losses:
+        return {}, Decimal("0")
+
+    available_usdt = get_available_balance("USDT")
+    target_budget = Decimal(str(available_usdt)) * Decimal("0.8")
+
+    # Start with 1 contract for each symbol
+    contracts_map = {sym: Decimal("1") for sym in per_contract_losses}
+
+    def total_notional():
+        return sum(contracts_map[sym] * notional_per_contract[sym] for sym in contracts_map)
+
+    def total_loss(sym):
+        return per_contract_losses[sym] * contracts_map[sym]
+
+    # Iteratively increase smallest TotalLoss until we reach the budget
+    while True:
+        current_total_notional = total_notional()
+        if current_total_notional >= target_budget:
+            break
+
+        # Find symbol with smallest TotalLoss
+        symbol_to_increase = min(contracts_map.keys(), key=lambda s: total_loss(s))
+
+        # Check if adding one more contract would exceed the budget
+        projected_notional = current_total_notional + notional_per_contract[symbol_to_increase]
+        if projected_notional > target_budget:
+            break
+
+        # Increase contracts for that symbol
+        contracts_map[symbol_to_increase] += 1
+
+    max_expected_loss = max(total_loss(sym) for sym in contracts_map)
+
+    # Convert to int and log
+    final_contracts_map = {}
+    for symbol in contracts_map:
+        c = int(contracts_map[symbol])
+        final_contracts_map[symbol] = c
+        print_with_date(
+            f"[SIZING] {symbol}: Price={prices[symbol]}, Notional/Contract={notional_per_contract[symbol]}, "
+            f"PerContractLoss={per_contract_losses[symbol]}, Contracts={c}, "
+            f"TotalNotional={notional_per_contract[symbol] * c}, TotalLoss={per_contract_losses[symbol] * c}"
+        )
+
+    print_with_date(f"[SIZING] Final TotalNotional={total_notional()}, TargetBudget={target_budget}")
+    return final_contracts_map, max_expected_loss
 
 def build_trailing_stops_map():
     result = {}
