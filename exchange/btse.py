@@ -11,6 +11,14 @@ from config import API_KEY, API_SECRET, BASE_URL
 from utils import print_with_date, lock_guard, debug
 
 # ===============================
+# Others
+# ===============================
+
+def throttled_request(method, url, **kwargs):
+    with lock_guard(CLIENT_NAME):
+        return requests.request(method, url, timeout=30, **kwargs)
+
+# ===============================
 # Authentication & Request Helpers
 # ===============================
 
@@ -99,6 +107,53 @@ def fetch_top_symbols_by_volume(limit=5):
     except Exception as e:
         print_with_date(f"[ERROR] Failed to fetch top volume symbols: {e}")
         return []
+
+# ===============================
+# OHLCV
+# ===============================
+
+def prune_ohlcv_cache():
+    now = datetime.utcnow()
+    expired = [sym for sym, (_, ts) in OHLCV_CACHE.items() if now - ts >= OHLCV_CACHE_TIMEOUT]
+    for sym in expired:
+        del OHLCV_CACHE[sym]
+
+def fetch_4h_ohlcv_real(symbol, limit=100):
+    url = f"{BASE_URL}/api/v2.2/ohlcv"
+    end_time = int(time.time() * 1000)  # current timestamp in ms
+    params = {
+        'symbol': symbol,
+        'resolution': '5',  # 5m candles
+        'end': end_time,
+    }
+    response = throttled_request("GET", url, params=params)
+    response.raise_for_status()
+    data = response.json()
+
+    if not data or len(data) < 20:
+        print_with_date(f"[ERROR] Not enough candle data to calculate ATR for {symbol}")
+        return None
+
+    df = pd.DataFrame(data, columns=["timestamp", "open", "high", "low", "close", "volume"])
+    df = df.sort_values('timestamp')
+    return df
+
+def fetch_4h_ohlcv(symbol, limit=100):
+    """
+    Cached wrapper around fetch_4h_ohlcv_real.
+    Prunes expired entries and uses cache if available.
+    """
+    # Remove expired cache entries first
+    prune_ohlcv_cache()
+
+    # If symbol is cached after pruning, it's valid
+    if symbol in OHLCV_CACHE:
+        return OHLCV_CACHE[symbol][0]
+
+    # Otherwise, fetch fresh data and cache it
+    df = fetch_4h_ohlcv_real(symbol, limit)
+    OHLCV_CACHE[symbol] = (df, datetime.utcnow())
+    return df
 
 # ===============================
 # Contract & Price Info
@@ -357,3 +412,7 @@ def update_symbol_settings(symbol):
         update_leverage_again(symbol)
     except Exception as e:
         print_with_date(f"[ERROR] {symbol}: setup failed: {e}")
+
+# ===============================
+# More functions
+# ===============================

@@ -29,6 +29,8 @@ from exchange.btse import (
     update_symbol_settings
 )
 
+from trading import get_atr
+
 from utils import print_with_date, debug
 
 class PriceFetchError(Exception):
@@ -36,77 +38,6 @@ class PriceFetchError(Exception):
     pass
 
 getcontext().prec = 16
-
-def throttled_request(method, url, **kwargs):
-    with lock_guard(CLIENT_NAME):
-        return requests.request(method, url, timeout=30, **kwargs)
-
-def prune_ohlcv_cache():
-    now = datetime.utcnow()
-    expired = [sym for sym, (_, ts) in OHLCV_CACHE.items() if now - ts >= OHLCV_CACHE_TIMEOUT]
-    for sym in expired:
-        del OHLCV_CACHE[sym]
-
-def fetch_4h_ohlcv_real(symbol, limit=100):
-    url = f"{BASE_URL}/api/v2.2/ohlcv"
-    end_time = int(time.time() * 1000)  # current timestamp in ms
-    params = {
-        'symbol': symbol,
-        'resolution': '5',  # 5m candles
-        'end': end_time,
-    }
-    response = throttled_request("GET", url, params=params)
-    response.raise_for_status()
-    data = response.json()
-    
-    if not data or len(data) < 20:
-        print_with_date(f"[ERROR] Not enough candle data to calculate ATR for {symbol}")
-        return None
-
-    df = pd.DataFrame(data, columns=["timestamp", "open", "high", "low", "close", "volume"])
-    df = df.sort_values('timestamp')
-    return df
-
-def fetch_4h_ohlcv(symbol, limit=100):
-    """
-    Cached wrapper around fetch_4h_ohlcv_real.
-    Prunes expired entries and uses cache if available.
-    """
-    # Remove expired cache entries first
-    prune_ohlcv_cache()
-
-    # If symbol is cached after pruning, it's valid
-    if symbol in OHLCV_CACHE:
-        return OHLCV_CACHE[symbol][0]
-
-    # Otherwise, fetch fresh data and cache it
-    df = fetch_4h_ohlcv_real(symbol, limit)
-    OHLCV_CACHE[symbol] = (df, datetime.utcnow())
-    return df
-
-def get_atr(symbol, period=14):
-    try:
-        df = fetch_4h_ohlcv(symbol)
-        if df is None or df.empty:
-            print_with_date(f"[ATR] No candle data for {symbol}")
-            return Decimal("0")
-
-        atr_value = calculate_atr(df, ma_period=period)
-
-        # Handle if calculate_atr returns a float instead of Series
-        if isinstance(atr_value, (float, int)):
-            latest_atr = Decimal(str(atr_value))
-        else:
-            if atr_value.empty:
-                print_with_date(f"[ATR] Could not compute ATR for {symbol}")
-                return Decimal("0")
-            latest_atr = Decimal(str(atr_value.iloc[-1]))
-
-        return latest_atr
-
-    except Exception as e:
-        print_with_date(f"[ATR ERROR] {symbol}: {e}")
-        return Decimal("0")
 
 def classify_trend_or_range_real(symbol, lookback=50, threshold=0.0003):
     """
