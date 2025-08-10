@@ -15,6 +15,22 @@ import math
 from contextlib import contextmanager
 from api_lock_client import api_lock_acquire_lock, api_lock_release_lock
 
+from exchange.btse import (
+    get_market_summary,
+    fetch_top_symbols_by_volume,
+    fetch_contract_sizes,
+    fetch_min_price_increments,
+    compute_contracts_from_prices,
+    place_range_order,
+    close_position,
+    update_leverage,
+    update_position_mode,
+    update_leverage_again,
+    update_symbol_settings
+)
+
+from utils import print_with_date, debug
+
 class PriceFetchError(Exception):
     """Raised when the current price could not be fetched from the API."""
     pass
@@ -970,75 +986,6 @@ def set_symbol_as_ready(symbol):
 # === Setup helpers from symbols_setup.py ===
 import json  # ensure json is imported in main.py if not already
 
-def update_leverage(symbol):
-    url_path = '/api/v2.2/leverage'
-    full_url = BASE_URL + url_path
-
-    params = {"symbol": symbol, "marginMode": "ISOLATED", "leverage": "1"}
-    nonce = str(int(time.time() * 1000))
-    body_str = json.dumps(params, separators=(',', ':'))
-    sig = generate_signature(API_SECRET, url_path, nonce, body_str)
-    headers = {
-        'request-api': API_KEY,
-        'request-nonce': nonce,
-        'request-sign': sig,
-        'Content-Type': 'application/json'
-    }
-
-    response = throttled_request("POST", full_url, headers=headers, data=body_str)
-    print_with_date(f"[SETUP] {symbol}: Margin mode set to: isolated. Leverage set to 1x.")
-    time.sleep(1)
-
-def update_position_mode(symbol):
-    url_path = '/api/v2.2/position_mode'
-    full_url = BASE_URL + url_path
-
-    params = {"symbol": symbol, "positionMode": "ISOLATED"}
-    nonce = str(int(time.time() * 1000))
-    body_str = json.dumps(params, separators=(',', ':'))
-    sig = generate_signature(API_SECRET, url_path, nonce, body_str)
-    headers = {
-        'request-api': API_KEY,
-        'request-nonce': nonce,
-        'request-sign': sig,
-        'Content-Type': 'application/json'
-    }
-
-    response = throttled_request("POST", full_url, headers=headers, data=body_str)
-    print_with_date(f"[SETUP] {symbol}: Position mode set to ISOLATED")
-    time.sleep(1)
-
-def update_leverage_again(symbol):
-    url_path = '/api/v2.2/leverage'
-    full_url = BASE_URL + url_path
-
-    params = {
-        "symbol": symbol,
-        "positionMode": "ISOLATED",
-        "marginMode": "ISOLATED",
-        "leverage": "1"
-    }
-    nonce = str(int(time.time() * 1000))
-    body_str = json.dumps(params, separators=(',', ':'))
-    sig = generate_signature(API_SECRET, url_path, nonce, body_str)
-    headers = {
-        'request-api': API_KEY,
-        'request-nonce': nonce,
-        'request-sign': sig,
-        'Content-Type': 'application/json'
-    }
-
-    response = throttled_request("POST", full_url, headers=headers, data=body_str)
-    print_with_date(f"[SETUP] {symbol}: (AGAIN) Margin mode set to: isolated. Leverage set to 1x.")
-
-def update_symbol_settings(symbol):
-    try:
-        update_leverage(symbol)
-        update_position_mode(symbol)
-        update_leverage_again(symbol)
-    except Exception as e:
-        print_with_date(f"[ERROR] {symbol}: setup failed: {e}")
-
 def setup_symbol_modes():
     new_symbols = get_new_symbols()
 
@@ -1334,51 +1281,6 @@ def prune_market_summary_cache():
         MARKET_SUMMARY_CACHE["data"] = None
         MARKET_SUMMARY_CACHE["timestamp"] = None
 
-def get_market_summary():
-    prune_market_summary_cache()
-    if MARKET_SUMMARY_CACHE["data"] is not None:
-        return MARKET_SUMMARY_CACHE["data"]
-
-    try:
-        url = f"{BASE_URL}/api/v2.2/market_summary"
-        params = {"listFullAttributes": "true"}
-        response = throttled_request("GET", url, params=params)
-        response.raise_for_status()
-        data = response.json()
-        if not data:
-            print_with_date("[ERROR] No data received from market_summary.")
-            return []
-        # Cache fresh data with current timestamp
-        MARKET_SUMMARY_CACHE["data"] = data
-        MARKET_SUMMARY_CACHE["timestamp"] = datetime.utcnow()
-        return data
-    except Exception as e:
-        print_with_date(f"[ERROR] Failed to fetch market summary: {e}")
-        return []
-
-def fetch_top_symbols_by_volume(limit=5):
-    try:
-        data = get_market_summary()
-        if not data:
-            print_with_date("[ERROR] No data received from market_summary.")
-            return []
-
-        # Sort by 24h volume descending
-        sorted_data = sorted(
-            data,
-            key=lambda m: m.get("volume", 0),
-            reverse=True
-        )
-
-        # Extract top symbols
-        top_symbols = [m["symbol"] for m in sorted_data if m.get("symbol") and m.get("volume") > 0]
-
-        return top_symbols[:limit]
-
-    except Exception as e:
-        print_with_date(f"[ERROR] Failed to fetch top volume symbols: {e}")
-        return []
-
 def filter_symbols_by_age_and_volume(market_summary):
     # Filter symbols older than MIN_CONTRACT_AGE_DAYS
     aged_symbols = filter_old_symbols(market_summary)  # list of strings
@@ -1501,134 +1403,6 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
     print_with_date(f"[SYMBOLS] Selected LONG: {long_symbols} | SHORT: {short_symbols}")
 
     return final_symbols, long_symbols, short_symbols
-
-def fetch_contract_sizes(symbols):
-    contract_sizes = {}
-    for symbol in symbols:
-        try:
-            url = f"{BASE_URL}/api/v2.2/market_summary"
-            params = {
-                "symbol": symbol,
-                "listFullAttributes": "true"
-            }
-            response = throttled_request("GET", url, params=params)
-            response.raise_for_status()
-            data = response.json()
-
-            if not data:
-                print_with_date(f"[WARN] No market data returned for {symbol}")
-                continue
-
-            market = data[0] if isinstance(data, list) else data
-            contract_size = market.get("contractSize")
-            if contract_size and Decimal(str(contract_size)) > 0:
-                contract_sizes[symbol] = Decimal(str(contract_size))
-            else:
-                print_with_date(f"[WARN] No valid contractSize for {symbol}")
-
-        except Exception as e:
-            print_with_date(f"[ERROR] Failed to fetch contract size for {symbol}: {e}")
-
-    if not contract_sizes:
-        print_with_date("[ERROR] No contract sizes could be determined.")
-    return contract_sizes
-
-def fetch_min_price_increments(symbols):
-    min_price_increments = {}
-    for symbol in symbols:
-        try:
-            url = f"{BASE_URL}/api/v2.2/market_summary"
-            params = {
-                "symbol": symbol,
-                "listFullAttributes": "true"
-            }
-            response = throttled_request("GET", url, params=params)
-            response.raise_for_status()
-            data = response.json()
-
-            if not data:
-                print_with_date(f"[WARN] No market data returned for {symbol}")
-                continue
-
-            market = data[0] if isinstance(data, list) else data
-            min_price_increment = market.get("minPriceIncrement")
-            if min_price_increment and Decimal(str(min_price_increment)) > 0:
-                min_price_increments[symbol] = Decimal(str(min_price_increment))
-            else:
-                print_with_date(f"[WARN] No valid minPriceIncrement for {symbol}")
-
-        except Exception as e:
-            print_with_date(f"[ERROR] Failed to fetch contract size for {symbol}: {e}")
-
-    if not min_price_increments:
-        print_with_date("[ERROR] No contract sizes could be determined.")
-    return min_price_increments
-
-def compute_contracts_from_prices(symbols, contract_sizes):
-    prices = {}
-    notional_per_contract = {}
-    per_contract_losses = {}
-
-    for symbol in symbols:
-        price = get_current_price(symbol)
-        if price is None or symbol not in contract_sizes:
-            continue
-        price = Decimal(str(price))
-        size = contract_sizes[symbol]
-        notional = price * size
-        trail_percent = Decimal(str(TRAILING_STOPS_MAP.get(symbol, [1])[0])) / Decimal("100")
-
-        prices[symbol] = price
-        notional_per_contract[symbol] = notional
-        per_contract_losses[symbol] = notional * trail_percent
-
-    if not per_contract_losses:
-        return {}, Decimal("0")
-
-    available_usdt = get_available_balance("USDT")
-    target_budget = Decimal(str(available_usdt)) * Decimal("0.8")
-
-    # Start with 1 contract for each symbol
-    contracts_map = {sym: Decimal("1") for sym in per_contract_losses}
-
-    def total_notional():
-        return sum(contracts_map[sym] * notional_per_contract[sym] for sym in contracts_map)
-
-    def total_loss(sym):
-        return per_contract_losses[sym] * contracts_map[sym]
-
-    # Iteratively increase smallest TotalLoss until we reach the budget
-    while True:
-        current_total_notional = total_notional()
-        if current_total_notional >= target_budget:
-            break
-
-        # Find symbol with smallest TotalLoss
-        symbol_to_increase = min(contracts_map.keys(), key=lambda s: total_loss(s))
-
-        # Check if adding one more contract would exceed the budget
-        projected_notional = current_total_notional + notional_per_contract[symbol_to_increase]
-        if projected_notional > target_budget:
-            break
-
-        # Increase contracts for that symbol
-        contracts_map[symbol_to_increase] += 1
-
-    max_expected_loss = max(total_loss(sym) for sym in contracts_map)
-
-    # Convert to int and log
-    final_contracts_map = {}
-    for symbol in contracts_map:
-        c = int(contracts_map[symbol])
-        final_contracts_map[symbol] = c
-        print_with_date(
-            f"[SIZING] {symbol}: Price={prices[symbol]}, Notional/Contract={notional_per_contract[symbol]}, "
-            f"PerContractLoss={per_contract_losses[symbol]}, Contracts={c}, "
-            f"TotalNotional={notional_per_contract[symbol] * c}, TotalLoss={per_contract_losses[symbol] * c}"
-        )
-
-    print_with_date(f"[SIZING] Final TotalNotional={total_notional()}, TargetBudget={target_budget}")
-    return final_contracts_map, max_expected_loss
 
 def build_trailing_stops_map():
     result = {}
@@ -1952,48 +1726,6 @@ def get_trade_by_opening_order_id(symbol, order_id):
         print_with_date(f"[ERROR] Trade lookup failed for opening order_id {order_id}: {e}")
         return None
 
-def close_position(symbol, info):
-    """
-    Close an open position for the given symbol using BTSE's close_position endpoint.
-    Automatically closes the entire position at market price.
-    """
-    try:
-        position_id = info.get("position_id")
-
-        url_path = "/api/v2.2/order/close_position"
-        full_url = BASE_URL + url_path
-
-        # Basic request body
-        order = {
-            "symbol": symbol,
-            "type": "MARKET"
-        }
-
-        # For isolated/hedge mode, include positionId
-        if position_id:
-            order["positionId"] = position_id
-
-        body_str = json.dumps(order, separators=(',', ':'))
-        nonce = str(int(time.time() * 1000))
-        sig = generate_signature(API_SECRET, url_path, nonce, body_str)
-        headers = {
-            "request-api": API_KEY,
-            "request-nonce": nonce,
-            "request-sign": sig,
-            "Content-Type": "application/json"
-        }
-
-        debug(f"[CLOSE] Sending close_position request for {symbol}, positionId={position_id}")
-        response = throttled_request("POST", full_url, headers=headers, data=body_str)
-        response.raise_for_status()
-
-        print_with_date(f"[CLOSE] Successfully sent close_position for {symbol}")
-        return True
-
-    except Exception as e:
-        print_with_date(f"[ERROR] Failed to close {symbol}: {e}")
-        return False
-
 # === Win Check ===
 def is_win_from_trade(realized_pnl):
     try:
@@ -2143,66 +1875,6 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
             "opened_at": time.time()
         }
         update_position(pid, positions[symbol][pid], symbol)
-
-def place_range_order(symbol, position_side, contracts, entry_price, take_profit, stop_loss, cl_order_id):
-    """
-    Place a limit order with both take profit and stop loss triggers.
-    Uses BTSE's API v2.2 /order endpoint.
-    """
-    try:
-        url = "https://api.btse.com/futures/api/v2.2/order"
-
-        limit_side = "SELL" if position_side == "SHORT" else "BUY"  # Entry side
-
-        url_path = '/api/v2.2/order'
-        full_url = BASE_URL + url_path
-
-        # === Limit Order ===
-        debug(f"[DEBUG] Placing LIMIT order: {limit_side} {contracts} contracts")
-        nonce = str(int(time.time() * 1000))
-        limit_order = {
-            "postOnly": False,
-            "price": float(entry_price),
-            "reduceOnly": False,
-            "side": limit_side,
-            "size": contracts,
-            "symbol": symbol,
-            "takeProfitPrice": float(take_profit),
-            "takeProfitTrigger": "markPrice",
-            "stopLossPrice": float(stop_loss),
-            "stopLossTrigger": "lastPrice",
-            "time_in_force": "GTC",
-            "type": "LIMIT",
-            "txType": "LIMIT",
-            "positionMode": "ISOLATED",
-            "clOrderID": cl_order_id
-        }
-        limit_body_str = json.dumps(limit_order, separators=(',', ':'))
-        limit_sig = generate_signature(API_SECRET, url_path, nonce, limit_body_str)
-        limit_headers = {
-            'request-api': API_KEY,
-            'request-nonce': nonce,
-            'request-sign': limit_sig,
-            'Content-Type': 'application/json'
-        }
-
-        debug(f"LIMIT order payload: {limit_body_str}")
-        limit_response = throttled_request('POST', full_url, headers=limit_headers, data=limit_body_str)
-        debug(f"LIMIT order response status: {limit_response.status_code}")
-        debug(f"LIMIT order response body: {limit_response.text}")
-        limit_response.raise_for_status()
-        limit_data = limit_response.json()
-        if not isinstance(limit_data, list) or not limit_data:
-            print_with_date("[ERROR] Unexpected limit order response.")
-            return None
-        position_id = limit_data[0].get('positionId')
-        if not position_id:
-            print_with_date("[ERROR] Missing position ID.")
-            return None
-        return position_id
-    except Exception as e:
-        print_with_date(f"[ERROR] Failed to place order: {e}")
-        return None
 
 # === Check and Manage Positions ===
 def check_positions(symbol):
