@@ -1,7 +1,9 @@
+from . import trend
+
 def build_trailing_stops_map(symbol_configs):
     result = {}
     for symbol, cfg in symbol_configs.items():
-        trailing_start = calculate_trailing_start_from_atr(symbol)
+        trailing_start = trend.calculate_trailing_start_from_atr(symbol)
         if trailing_start is None:
             continue  # or raise/log error
 
@@ -19,7 +21,7 @@ def build_trailing_stops_map(symbol_configs):
 def update_trailing_stops_for_symbol(symbol):
     cfg = SYMBOL_CONFIGS.get(symbol, {})
 
-    trailing_start = calculate_trailing_start_from_atr(symbol)
+    trailing_start = trend.calculate_trailing_start_from_atr(symbol)
     if trailing_start is None:
         print_with_date(f"[ERROR] Could not calculate trailing start for {symbol}")
         return
