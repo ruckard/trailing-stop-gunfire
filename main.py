@@ -11,6 +11,7 @@ import traceback
 import pandas as pd
 import numpy as np
 import math
+import importlib
 
 from contextlib import contextmanager
 from api_lock_client import api_lock_acquire_lock, api_lock_release_lock
@@ -31,7 +32,7 @@ from exchange.btse import (
 
 from trading import get_atr
 
-from utils import print_with_date, debug
+from utils import print_with_date, debug, safe_override_import_or_default
 
 class PriceFetchError(Exception):
     """Raised when the current price could not be fetched from the API."""
@@ -1008,115 +1009,24 @@ MIN_CONTRACT_AGE_DAYS = 15
 # Default client name is the directory name where script is running
 DEFAULT_CLIENT_NAME = os.path.basename(os.getcwd())
 
-try:
-    from override_config import SYMBOL_CONFIGS as OV_SYMBOL_CONFIGS
-except ImportError:
-    OV_SYMBOL_CONFIGS = None
-
-try:
-    from override_config import API_DELAY_MS as OV_API_DELAY_MS
-except ImportError:
-    OV_API_DELAY_MS = None
-
-try:
-    from override_config import ATR_MA_PERIOD as OV_ATR_MA_PERIOD
-except ImportError:
-    OV_ATR_MA_PERIOD = None
-
-try:
-    from override_config import TOP_SYMBOLS_BY_VOLUME as OV_TOP_SYMBOLS_BY_VOLUME
-except ImportError:
-    OV_TOP_SYMBOLS_BY_VOLUME = None
-
-try:
-    from override_config import ADDITIONAL_SYMBOLS as OV_ADDITIONAL_SYMBOLS
-except ImportError:
-    OV_ADDITIONAL_SYMBOLS = []
-
-try:
-    from override_config import EXCLUDED_SYMBOLS as OV_EXCLUDED_SYMBOLS
-except ImportError:
-    OV_EXCLUDED_SYMBOLS = []
-
-try:
-    from override_config import TRADE_MAX_CANDLES as OV_TRADE_MAX_CANDLES
-except ImportError:
-    OV_TRADE_MAX_CANDLES = None
-
-try:
-    from override_config import CANDLE_INTERVAL_MINUTES as OV_CANDLE_INTERVAL_MINUTES
-except ImportError:
-    OV_CANDLE_INTERVAL_MINUTES = None
-
-try:
-    from override_config import VOL_BOTTOM_PERCENTILE as OV_VOL_BOTTOM_PERCENTILE
-except ImportError:
-    OV_VOL_BOTTOM_PERCENTILE = None
-
-try:
-    from override_config import VOL_TOP_PERCENTILE as OV_VOL_TOP_PERCENTILE
-except ImportError:
-    OV_VOL_TOP_PERCENTILE = None
-
-try:
-    from override_config import REOPEN_ON_WIN as OV_REOPEN_ON_WIN
-except ImportError:
-    OV_REOPEN_ON_WIN = None
-
-try:
-    from override_config import REOPEN_ON_BREAKEVEN as OV_REOPEN_ON_BREAKEVEN
-except ImportError:
-    OV_REOPEN_ON_BREAKEVEN = None
-
-try:
-    from override_config import RANGE_ENTRY_OFFSET_PCT as OV_RANGE_ENTRY_OFFSET_PCT
-except ImportError:
-    OV_RANGE_ENTRY_OFFSET_PCT = None
-
-try:
-    from override_config import RANGE_TAKE_PROFIT_PCT as OV_RANGE_TAKE_PROFIT_PCT
-except ImportError:
-    OV_RANGE_TAKE_PROFIT_PCT = None
-
-try:
-    from override_config import RANGE_STOP_LOSS_PCT as OV_RANGE_STOP_LOSS_PCT
-except ImportError:
-    OV_RANGE_STOP_LOSS_PCT = None
-
-try:
-    from override_config import MAXIMUM_LONG_TRADES_NUMBER as OV_MAXIMUM_LONG_TRADES_NUMBER
-except ImportError:
-    OV_MAXIMUM_LONG_TRADES_NUMBER = None
-
-try:
-    from override_config import MAXIMUM_SHORT_TRADES_NUMBER as OV_MAXIMUM_SHORT_TRADES_NUMBER
-except ImportError:
-    OV_MAXIMUM_SHORT_TRADES_NUMBER = None
-
-try:
-    from override_config import CLIENT_NAME as OV_CLIENT_NAME
-except ImportError:
-    OV_CLIENT_NAME = None
-
-# === Final Config Values (Override if provided) ===
-SYMBOL_CONFIGS = OV_SYMBOL_CONFIGS if OV_SYMBOL_CONFIGS is not None else DEFAULT_SYMBOL_CONFIGS
-API_DELAY_MS = OV_API_DELAY_MS if OV_API_DELAY_MS is not None else DEFAULT_API_DELAY_MS
-ATR_MA_PERIOD = OV_ATR_MA_PERIOD if OV_ATR_MA_PERIOD is not None else DEFAULT_ATR_MA_PERIOD
-TOP_SYMBOLS_BY_VOLUME = OV_TOP_SYMBOLS_BY_VOLUME if OV_TOP_SYMBOLS_BY_VOLUME is not None else TOP_SYMBOLS_BY_VOLUME_DEFAULT
-ADDITIONAL_SYMBOLS = OV_ADDITIONAL_SYMBOLS if OV_ADDITIONAL_SYMBOLS is not None else DEFAULT_ADDITIONAL_SYMBOLS
-EXCLUDED_SYMBOLS = OV_EXCLUDED_SYMBOLS if OV_EXCLUDED_SYMBOLS is not None else DEFAULT_EXCLUDED_SYMBOLS
-TRADE_MAX_CANDLES = OV_TRADE_MAX_CANDLES if OV_TRADE_MAX_CANDLES is not None else TRADE_MAX_CANDLES_DEFAULT
-CANDLE_INTERVAL_MINUTES = OV_CANDLE_INTERVAL_MINUTES if OV_CANDLE_INTERVAL_MINUTES is not None else CANDLE_INTERVAL_MINUTES_DEFAULT
-VOL_BOTTOM_PERCENTILE = OV_VOL_BOTTOM_PERCENTILE if OV_VOL_BOTTOM_PERCENTILE is not None else DEFAULT_VOL_BOTTOM_PERCENTILE
-VOL_TOP_PERCENTILE = OV_VOL_TOP_PERCENTILE if OV_VOL_TOP_PERCENTILE is not None else DEFAULT_VOL_TOP_PERCENTILE
-REOPEN_ON_WIN = OV_REOPEN_ON_WIN if OV_REOPEN_ON_WIN is not None else DEFAULT_REOPEN_ON_WIN
-REOPEN_ON_BREAKEVEN = OV_REOPEN_ON_BREAKEVEN if OV_REOPEN_ON_BREAKEVEN is not None else DEFAULT_REOPEN_ON_BREAKEVEN
-RANGE_ENTRY_OFFSET_PCT = OV_RANGE_ENTRY_OFFSET_PCT if OV_RANGE_ENTRY_OFFSET_PCT is not None else DEFAULT_RANGE_ENTRY_OFFSET_PCT
-RANGE_TAKE_PROFIT_PCT = OV_RANGE_TAKE_PROFIT_PCT if OV_RANGE_TAKE_PROFIT_PCT is not None else DEFAULT_RANGE_TAKE_PROFIT_PCT
-RANGE_STOP_LOSS_PCT = OV_RANGE_STOP_LOSS_PCT if OV_RANGE_STOP_LOSS_PCT is not None else DEFAULT_RANGE_STOP_LOSS_PCT
-MAXIMUM_LONG_TRADES_NUMBER = OV_MAXIMUM_LONG_TRADES_NUMBER if OV_MAXIMUM_LONG_TRADES_NUMBER is not None else DEFAULT_MAXIMUM_LONG_TRADES_NUMBER
-MAXIMUM_SHORT_TRADES_NUMBER = OV_MAXIMUM_SHORT_TRADES_NUMBER if OV_MAXIMUM_SHORT_TRADES_NUMBER is not None else DEFAULT_MAXIMUM_SHORT_TRADES_NUMBER
-CLIENT_NAME = OV_CLIENT_NAME if OV_CLIENT_NAME is not None else DEFAULT_CLIENT_NAME
+SYMBOL_CONFIGS = safe_override_import_or_default("override_config", "SYMBOL_CONFIGS", DEFAULT_SYMBOL_CONFIGS)
+API_DELAY_MS = safe_override_import_or_default("override_config", "API_DELAY_MS", DEFAULT_API_DELAY_MS)
+ATR_MA_PERIOD = safe_override_import_or_default("override_config", "ATR_MA_PERIOD", DEFAULT_ATR_MA_PERIOD)
+TOP_SYMBOLS_BY_VOLUME = safe_override_import_or_default("override_config", "TOP_SYMBOLS_BY_VOLUME", DEFAULT_TOP_SYMBOLS_BY_VOLUME)
+TRADE_MAX_CANDLES = safe_override_import_or_default("override_config", "TRADE_MAX_CANDLES", DEFAULT_TRADE_MAX_CANDLES)
+CANDLE_INTERVAL_MINUTES = safe_override_import_or_default("override_config", "CANDLE_INTERVAL_MINUTES", DEFAULT_CANDLE_INTERVAL_MINUTES)
+VOL_BOTTOM_PERCENTILE = safe_override_import_or_default("override_config", "VOL_BOTTOM_PERCENTILE", DEFAULT_VOL_BOTTOM_PERCENTILE)
+VOL_TOP_PERCENTILE = safe_override_import_or_default("override_config", "VOL_TOP_PERCENTILE", DEFAULT_VOL_TOP_PERCENTILE)
+REOPEN_ON_WIN = safe_override_import_or_default("override_config", "REOPEN_ON_WIN", DEFAULT_REOPEN_ON_WIN)
+REOPEN_ON_BREAKEVEN = safe_override_import_or_default("override_config", "REOPEN_ON_BREAKEVEN", DEFAULT_REOPEN_ON_BREAKEVEN)
+RANGE_ENTRY_OFFSET_PCT = safe_override_import_or_default("override_config", "RANGE_ENTRY_OFFSET_PCT", DEFAULT_RANGE_ENTRY_OFFSET_PCT)
+RANGE_TAKE_PROFIT_PCT = safe_override_import_or_default("override_config", "RANGE_TAKE_PROFIT_PCT", DEFAULT_RANGE_TAKE_PROFIT_PCT)
+RANGE_STOP_LOSS_PCT = safe_override_import_or_default("override_config", "RANGE_STOP_LOSS_PCT", DEFAULT_RANGE_STOP_LOSS_PCT)
+MAXIMUM_LONG_TRADES_NUMBER = safe_override_import_or_default("override_config", "MAXIMUM_LONG_TRADES_NUMBER", DEFAULT_MAXIMUM_LONG_TRADES_NUMBER)
+MAXIMUM_SHORT_TRADES_NUMBER = safe_override_import_or_default("override_config", "MAXIMUM_SHORT_TRADES_NUMBER", DEFAULT_MAXIMUM_SHORT_TRADES_NUMBER)
+CLIENT_NAME = safe_override_import_or_default("override_config", "CLIENT_NAME", DEFAULT_CLIENT_NAME)
+ADDITIONAL_SYMBOLS = safe_override_import_or_default("override_config", "ADDITIONAL_SYMBOLS", DEFAULT_ADDITIONAL_SYMBOLS)
+EXCLUDED_SYMBOLS = safe_override_import_or_default("override_config", "EXCLUDED_SYMBOLS", DEFAULT_EXCLUDED_SYMBOLS)
 
 CONTRACTS_MAP = {}
 CONTRACT_SIZES = {}

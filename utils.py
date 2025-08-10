@@ -1,6 +1,7 @@
 import threading
 from datetime import datetime
 import sys
+import importlib
 
 # ===============================
 # Printing with timestamp
@@ -38,3 +39,18 @@ def debug(msg):
     Prints a debug message with timestamp and [DEBUG] tag.
     """
     print_with_date(f"[DEBUG] {msg}")
+
+# ===============================
+# Others
+# ===============================
+
+def safe_override_import_or_default(
+    module_name,
+    symbol_name,
+    default_value=None
+):
+    try:
+        module = importlib.import_module(module_name)
+        return getattr(module, symbol_name)
+    except (ImportError, AttributeError):
+        return default_value
