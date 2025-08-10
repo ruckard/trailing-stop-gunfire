@@ -5,17 +5,36 @@ import math
 import requests
 from datetime import datetime, timedelta
 from decimal import Decimal
+import pandas as pd
+import state
 
 # Import your config and utilities
 from config import API_KEY, API_SECRET, BASE_URL
 from utils import print_with_date, lock_guard, debug
 
+
+OHLCV_CACHE = {}
+OHLCV_CACHE_TIMEOUT = timedelta(minutes=5)
+
 # ===============================
 # Others
 # ===============================
 
+def retry_until_valid(fetch_func, *args, max_retries=None, wait_seconds=10, **kwargs):
+    attempt = 0
+    while True:
+        result = fetch_func(*args, **kwargs)
+        if result is not None:
+            return result
+        attempt += 1
+        print_with_date(f"[RETRY] {fetch_func.__name__} failed. Attempt {attempt}. Retrying in {wait_seconds}s...")
+        time.sleep(wait_seconds)
+        if max_retries is not None and attempt >= max_retries:
+            print_with_date(f"[RETRY] Max retries reached for {fetch_func.__name__}. Returning None.")
+            return None
+
 def throttled_request(method, url, **kwargs):
-    with lock_guard(CLIENT_NAME):
+    with lock_guard(state.CLIENT_NAME):
         return requests.request(method, url, timeout=30, **kwargs)
 
 # ===============================
@@ -32,19 +51,6 @@ def generate_signature(api_secret, path, nonce, data_str):
         digestmod=hashlib.sha384
     ).hexdigest()
     return signature
-
-# Default client name is the directory name
-import os
-DEFAULT_CLIENT_NAME = os.path.basename(os.getcwd())
-try:
-    from override_config import CLIENT_NAME as OV_CLIENT_NAME
-except ImportError:
-    OV_CLIENT_NAME = None
-CLIENT_NAME = OV_CLIENT_NAME if OV_CLIENT_NAME is not None else DEFAULT_CLIENT_NAME
-
-def throttled_request(method, url, **kwargs):
-    with lock_guard(CLIENT_NAME):
-        return requests.request(method, url, timeout=30, **kwargs)
 
 # ===============================
 # Market Summary (Cached)
@@ -416,3 +422,62 @@ def update_symbol_settings(symbol):
 # ===============================
 # More functions
 # ===============================
+
+def get_available_balance(currency="USDT"):
+    """
+    Query the CROSS wallet and return the available balance for the given currency.
+    Prints balance change with color.
+    """
+
+    try:
+        url_path = "/api/v2.2/user/wallet"
+        url = BASE_URL + url_path
+
+        nonce = str(int(time.time() * 1000))
+        sig = generate_signature(API_SECRET, url_path, nonce, "")
+
+        headers = {
+            'request-api': API_KEY,
+            'request-nonce': nonce,
+            'request-sign': sig
+        }
+
+        response = throttled_request("GET", url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+
+        cross_wallet = next((w for w in data if w.get("wallet") == "CROSS@"), None)
+        if not cross_wallet:
+            print_with_date("[BALANCE] No CROSS@ wallet found.")
+            return Decimal("0")
+
+        available_balance = Decimal(str(cross_wallet.get("availableBalance", 0)))
+
+        # Compute change
+        balance_change = None
+        if state.LAST_AVAILABLE_BALANCE is not None:
+            balance_change = available_balance - state.LAST_AVAILABLE_BALANCE
+
+        # Save for next call
+        state.LAST_AVAILABLE_BALANCE = available_balance
+
+        # Format change with color
+        change_str = ""
+        if balance_change is not None:
+            if balance_change > 0:
+                change_str = f"\033[92mChange: +{balance_change:.2f} {currency}\033[0m"
+            elif balance_change < 0:
+                change_str = f"\033[91mChange: {balance_change:.2f} {currency}\033[0m"
+            else:
+                change_str = f"Change: 0.00 {currency}"
+
+        if change_str:
+            print_with_date(f"[BALANCE] Available {currency}: {available_balance} | {change_str}")
+        else:
+            print_with_date(f"[BALANCE] Available {currency}: {available_balance}")
+
+        return available_balance
+
+    except Exception as e:
+        print_with_date(f"[BALANCE ERROR] {e}")
+        return Decimal("0")

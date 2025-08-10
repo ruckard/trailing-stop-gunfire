@@ -2,43 +2,39 @@ import threading
 from datetime import datetime
 import sys
 import importlib
+from contextlib import contextmanager
+
+from api_lock_client import api_lock_acquire_lock, api_lock_release_lock
+import state
 
 # ===============================
 # Printing with timestamp
 # ===============================
 
-def print_with_date(msg):
-    """
-    Prints a message prefixed with a UTC timestamp in [YYYY-MM-DD HH:MM:SS] format.
-    """
-    now_str = datetime.utcnow().strftime("[%Y-%m-%d %H:%M:%S]")
-    print(f"{now_str} {msg}")
-    sys.stdout.flush()
+def print_with_date(msg, end='\n'):
+    timestamp = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
+    print(f"{timestamp} {msg}", end=end)
+    state.check_sleep_start=True
 
 # ===============================
 # Lock Guard for throttling
 # ===============================
 
-_locks = {}
-
-def lock_guard(name):
-    """
-    Context manager for a named lock.
-    Used to synchronize access across threads for throttled API calls.
-    """
-    if name not in _locks:
-        _locks[name] = threading.Lock()
-    return _locks[name]
+@contextmanager
+def lock_guard(client_id):
+    api_lock_acquire_lock(client_id)
+    try:
+        yield
+    finally:
+        api_lock_release_lock(client_id)
 
 # ===============================
 # Debug Logging
 # ===============================
 
 def debug(msg):
-    """
-    Prints a debug message with timestamp and [DEBUG] tag.
-    """
-    print_with_date(f"[DEBUG] {msg}")
+    if state.DEBUG_MODE:
+        print_with_date(f"[DEBUG] {msg}")
 
 # ===============================
 # Others

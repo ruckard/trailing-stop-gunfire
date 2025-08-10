@@ -2,7 +2,6 @@ import time
 import hmac
 import hashlib
 import requests
-import json
 import os
 from datetime import datetime, timedelta, timezone
 import sqlite3
@@ -16,21 +15,59 @@ import importlib
 from contextlib import contextmanager
 from api_lock_client import api_lock_acquire_lock, api_lock_release_lock
 
-from exchange.btse import (
-    get_market_summary,
-    fetch_top_symbols_by_volume,
-    fetch_contract_sizes,
-    fetch_min_price_increments,
-    get_current_price,
-    place_range_order,
-    close_position,
-    update_leverage,
-    update_position_mode,
-    update_leverage_again,
-    update_symbol_settings
+import state
+import db.positions as positionsdb
+import db.knownsymbols as knownsymbolsdb
+
+from exchange import btse as exchange
+
+from trading.indicators import get_atr
+
+from trading.common import compute_contracts_from_prices
+
+from trading.trend import (
+    classify_trend_or_range_real,
+    classify_trend_or_range,
+    calculate_easy_trend6_with_rsi,
+    calculate_easy_trend5_with_rsi,
+    calculate_easy_trend4_with_rsi,
+    calculate_easy_trend3_with_rsi,
+    calculate_easy_trend2_with_rsi,
+    calculate_easy_trend_with_rsi,
+    calculate_trendest_with_rsi,
+    calculate_trend_with_rsi,
+    calculate_ema_trend_score,
+    calculate_atr,
+    calculate_trailing_start_from_atr,
 )
 
-from trading import get_atr
+from trading.range import (
+    place_range_positions,
+)
+
+from trading.positions import show_positions
+
+from trading.orders import (
+    build_trailing_stops_map,
+    update_trailing_stops_for_symbol,
+    place_trailing_stop,
+    place_all_positions,
+    place_trend_positions,
+    check_positions,
+)
+
+from trading.symbols import (
+    update_symbol_registry,
+    set_symbol_as_ready,
+    setup_symbol_modes,
+    filter_symbols_by_age_and_volume,
+    filter_symbols_by_rank,
+)
+
+from trading.analysis import (
+    is_win_from_trade,
+    is_breakeven_from_trade,
+)
 
 from utils import print_with_date, debug, safe_override_import_or_default
 
@@ -40,935 +77,11 @@ class PriceFetchError(Exception):
 
 getcontext().prec = 16
 
-def classify_trend_or_range_real(symbol, lookback=50, threshold=0.0003):
-    """
-    Classifies symbol as 'trend' or 'range' based on trend strength.
-    Returns: 'trend', 'range', or 'unknown'
-    """
-    try:
-        score = calculate_easy_trend6_with_rsi(symbol, lookback=lookback)
-        if score == 0.0:
-            return "range"
-        elif abs(score) >= threshold:
-            return "trend"
-        else:
-            return "range"
-    except Exception as e:
-        print_with_date(f"[ERROR] Classify failed for {symbol}: {e}")
-        return "unknown"
-
-def classify_trend_or_range(symbol, lookback=50, threshold=0.0003):
-    """
-    Cached wrapper for trend/range classification.
-    """
-    now = time.time()
-
-    if symbol in TRENDRANGE_CACHE:
-        ts, result = TRENDRANGE_CACHE[symbol]
-        if now - ts < TRENDRANGE_CACHE_TIMEOUT:
-            return result
-        else:
-            del TRENDRANGE_CACHE[symbol]
-
-    result = classify_trend_or_range_real(symbol, lookback=lookback, threshold=threshold)
-    TRENDRANGE_CACHE[symbol] = (now, result)
-    return result
-
-def calculate_easy_trend6_with_rsi(symbol, lookback=50, rsi_period=14,
-                                   rsi_low_cutoff=30, rsi_high_cutoff=70,
-                                   window_size=5):
-    """
-    'Easy Trend 6' variant:
-    - Uses overlapping sliding windows with log-return slopes.
-    - 60% majority rule instead of 80%.
-    - Range and RSI filters disabled.
-    """
-
-    df = fetch_4h_ohlcv(symbol)
-    if df is None or df.empty or len(df) < lookback:
-        return 0.0
-
-    # Use ohlc4 values
-    ohlc4 = ((df['open'] + df['high'] + df['low'] + df['close']) / 4.0).astype(float)
-    values = ohlc4.tail(lookback).values
-
-    if len(values) <= 9:
-        log_returns = np.diff(np.log(values))
-        slope_normalized = np.mean(log_returns)
-    else:
-        segment_slopes = []
-
-        for i in range(len(values) - window_size + 1):
-            segment = values[i:i + window_size]
-
-            log_returns = np.diff(np.log(segment))
-            mean_log_ret = np.mean(log_returns)
-            vol_adj_slope = mean_log_ret / (np.std(segment) + 1e-8)
-
-            segment_slopes.append(vol_adj_slope)
-            debug(
-                f"[DEBUG EASY TREND6] {symbol} | Window {i+1}/{len(values)-window_size+1} | "
-                f"MeanLogRet={mean_log_ret:.6f}, VolAdjSlope={vol_adj_slope:.6f}"
-            )
-
-        positive_count = sum(1 for s in segment_slopes if s > 0)
-        negative_count = sum(1 for s in segment_slopes if s < 0)
-        required_count = int(len(segment_slopes) * 0.6)  # ✅ 60% rule
-
-        first_candle = values[0]
-        last_candle = values[-1]
-
-        if positive_count >= required_count and last_candle > first_candle:
-            slope_normalized = np.mean(segment_slopes)
-        elif negative_count >= required_count and last_candle < first_candle:
-            slope_normalized = np.mean(segment_slopes)
-        else:
-            return 0.0
-
-        print_with_date(
-            f"[DEBUG EASY TREND6] {symbol} | (TOTAL) AvgSlope: {slope_normalized:.6f}, "
-            f"First={first_candle:.4f}, Last={last_candle:.4f}, "
-            f"PosCount={positive_count}, NegCount={negative_count}"
-        )
-
-    # ✅ Range filter disabled
-    if False:
-        max_price = np.max(values)
-        min_price = np.min(values)
-        range_pct = (max_price - min_price) / np.mean(values) * 100
-        if range_pct < 0.5:
-            return 0.0
-
-    # ✅ RSI filter disabled
-    if False:
-        delta = np.diff(values)
-        gain = np.where(delta > 0, delta, 0)
-        loss = np.where(delta < 0, -delta, 0)
-        avg_gain = np.mean(gain[-rsi_period:])
-        avg_loss = np.mean(loss[-rsi_period:])
-        rs = avg_gain / avg_loss if avg_loss != 0 else np.inf
-        rsi = 100 - (100 / (1 + rs))
-
-        if rsi < rsi_low_cutoff or rsi > rsi_high_cutoff:
-            return 0.0
-
-    return float(slope_normalized)
-
-def calculate_easy_trend5_with_rsi(symbol, lookback=50, rsi_period=14,
-                                   rsi_low_cutoff=30, rsi_high_cutoff=70,
-                                   window_size=5):
-    """
-    'Easy Trend 5' using overlapping sliding windows with log-return slopes.
-    Uses ohlc4 and weights consistency of slopes to determine trend.
-    """
-
-    df = fetch_4h_ohlcv(symbol)
-    if df is None or df.empty or len(df) < lookback:
-        return 0.0
-
-    # Use ohlc4 values
-    ohlc4 = ((df['open'] + df['high'] + df['low'] + df['close']) / 4.0).astype(float)
-    values = ohlc4.tail(lookback).values
-
-    if len(values) <= 9:
-        # For short lookbacks: average log returns over whole period
-        log_returns = np.diff(np.log(values))
-        slope_normalized = np.mean(log_returns)
-    else:
-        segment_slopes = []
-
-        # ✅ Overlapping sliding windows of size `window_size`
-        for i in range(len(values) - window_size + 1):
-            segment = values[i:i + window_size]
-
-            # Log-return slope for this window
-            log_returns = np.diff(np.log(segment))
-            mean_log_ret = np.mean(log_returns)
-            vol_adj_slope = mean_log_ret / (np.std(segment) + 1e-8)
-
-            segment_slopes.append(vol_adj_slope)
-            debug(
-                f"[DEBUG EASY TREND5] {symbol} | Window {i+1}/{len(values)-window_size+1} | "
-                f"MeanLogRet={mean_log_ret:.6f}, VolAdjSlope={vol_adj_slope:.6f}"
-            )
-
-        # ✅ Check consistency of slopes (80% majority rule)
-        positive_count = sum(1 for s in segment_slopes if s > 0)
-        negative_count = sum(1 for s in segment_slopes if s < 0)
-        required_count = int(len(segment_slopes) * 0.8)
-
-        first_candle = values[0]
-        last_candle = values[-1]
-
-        if positive_count >= required_count and last_candle > first_candle:
-            slope_normalized = np.mean(segment_slopes)
-        elif negative_count >= required_count and last_candle < first_candle:
-            slope_normalized = np.mean(segment_slopes)
-        else:
-            return 0.0
-
-        print_with_date(
-            f"[DEBUG EASY TREND5] {symbol} | (TOTAL) AvgSlope: {slope_normalized:.6f}, "
-            f"First={first_candle:.4f}, Last={last_candle:.4f}, "
-            f"PosCount={positive_count}, NegCount={negative_count}"
-        )
-
-    # Range filter
-    max_price = np.max(values)
-    min_price = np.min(values)
-    range_pct = (max_price - min_price) / np.mean(values) * 100
-    if range_pct < 0.5:
-        return 0.0
-
-    # RSI on ohlc4
-    delta = np.diff(values)
-    gain = np.where(delta > 0, delta, 0)
-    loss = np.where(delta < 0, -delta, 0)
-    avg_gain = np.mean(gain[-rsi_period:])
-    avg_loss = np.mean(loss[-rsi_period:])
-    rs = avg_gain / avg_loss if avg_loss != 0 else np.inf
-    rsi = 100 - (100 / (1 + rs))
-
-    if rsi < rsi_low_cutoff or rsi > rsi_high_cutoff:
-        return 0.0
-
-    return float(slope_normalized)
-
-def calculate_easy_trend4_with_rsi(symbol, lookback=50, rsi_period=14,
-                                   rsi_low_cutoff=30, rsi_high_cutoff=70):
-    """
-    Calculate 'easy trend 4' score using RSI filter.
-    Uses ohlc4 and log-return based slopes per segment with volatility normalization.
-    """
-
-    df = fetch_4h_ohlcv(symbol)
-    if df is None or df.empty or len(df) < lookback:
-        return 0.0
-
-    # Use ohlc4 as smoothed price input
-    ohlc4 = ((df['open'] + df['high'] + df['low'] + df['close']) / 4.0).astype(float)
-    values = ohlc4.tail(lookback).values
-
-    if len(values) <= 9:
-        # For very short lookback, use mean log return as overall slope
-        log_returns = np.diff(np.log(values))
-        slope_normalized = np.mean(log_returns)
-    else:
-        segment_size = 5
-        num_segments = len(values) // segment_size
-        values = values[-num_segments * segment_size:]
-
-        segment_slopes = []
-        for i in range(num_segments):
-            segment = values[i * segment_size:(i + 1) * segment_size]
-
-            # ✅ Use log returns for slope
-            log_returns = np.diff(np.log(segment))
-            mean_log_ret = np.mean(log_returns)
-
-            # Volatility adjustment: divide by stdev of segment prices
-            vol_adj_slope = mean_log_ret / (np.std(segment) + 1e-8)
-
-            debug(
-                f"[DEBUG EASY TREND4] {symbol} | Segment {i+1}/{num_segments} | "
-                f"MeanLogRet={mean_log_ret:.6f}, VolAdjSlope={vol_adj_slope:.6f}"
-            )
-
-            segment_slopes.append(vol_adj_slope)
-
-        positive_count = sum(1 for s in segment_slopes if s > 0)
-        negative_count = sum(1 for s in segment_slopes if s < 0)
-        required_count = int(len(segment_slopes) * 0.8)
-
-        first_candle = values[0]
-        last_candle = values[-1]
-
-        if positive_count >= required_count and last_candle > first_candle:
-            slope_normalized = sum(segment_slopes)
-        elif negative_count >= required_count and last_candle < first_candle:
-            slope_normalized = sum(segment_slopes)
-        else:
-            return 0.0
-
-        print_with_date(
-            f"[DEBUG EASY TREND4] {symbol} | (TOTAL) SlopeNormalized: {slope_normalized}, "
-            f"First={first_candle:.4f}, Last={last_candle:.4f}"
-        )
-
-    # Range filter
-    max_price = np.max(values)
-    min_price = np.min(values)
-    range_pct = (max_price - min_price) / np.mean(values) * 100
-    if range_pct < 0.5:
-        return 0.0
-
-    # RSI using ohlc4
-    delta = np.diff(values)
-    gain = np.where(delta > 0, delta, 0)
-    loss = np.where(delta < 0, -delta, 0)
-    avg_gain = np.mean(gain[-rsi_period:])
-    avg_loss = np.mean(loss[-rsi_period:])
-    rs = avg_gain / avg_loss if avg_loss != 0 else np.inf
-    rsi = 100 - (100 / (1 + rs))
-
-    if rsi < rsi_low_cutoff or rsi > rsi_high_cutoff:
-        return 0.0
-
-    return float(slope_normalized)
-
-def calculate_easy_trend3_with_rsi(symbol, lookback=50, rsi_period=14,
-                                   rsi_low_cutoff=30, rsi_high_cutoff=70):
-    """
-    Calculate an 'easy trend 3' score using RSI filter.
-    Uses ohlc4 and requires overall price movement to match trend direction:
-    - Uptrend: last candle > first candle
-    - Downtrend: last candle < first candle
-    """
-
-    df = fetch_4h_ohlcv(symbol)
-    if df is None or df.empty or len(df) < lookback:
-        return 0.0
-
-    ohlc4 = ((df['open'] + df['high'] + df['low'] + df['close']) / 4.0).astype(float)
-    values = ohlc4.tail(lookback).values
-
-    if len(values) <= 9:
-        x = np.arange(len(values))
-        slope, _ = np.polyfit(x, values, 1)
-        slope_normalized = slope / np.mean(values)
-    else:
-        segment_size = 5
-        num_segments = len(values) // segment_size
-        values = values[-num_segments * segment_size:]
-
-        segment_slopes = []
-        for i in range(num_segments):
-            segment = values[i * segment_size:(i + 1) * segment_size]
-            start_price = segment[0]
-            end_price = segment[-1]
-            mean_price = np.mean(segment)
-            raw_slope = end_price - start_price
-            normalized_slope = raw_slope / mean_price
-
-            debug(
-                f"[DEBUG EASY TREND3] {symbol} | Segment {i+1}/{num_segments} | "
-                f"Start={start_price:.4f}, End={end_price:.4f}, "
-                f"RawSlope={raw_slope:.6f}, NormSlope={normalized_slope:.6f}"
-            )
-
-            segment_slopes.append(normalized_slope)
-
-        positive_count = sum(1 for s in segment_slopes if s > 0)
-        negative_count = sum(1 for s in segment_slopes if s < 0)
-        required_count = int(len(segment_slopes) * 0.8)
-
-        first_candle = values[0]
-        last_candle = values[-1]
-
-        # ✅ Positive logic: accept only when both the slope count AND price movement match
-        if positive_count >= required_count and last_candle > first_candle:
-            slope_normalized = sum(segment_slopes)
-        elif negative_count >= required_count and last_candle < first_candle:
-            slope_normalized = sum(segment_slopes)
-        else:
-            return 0.0
-
-        print_with_date(
-            f"[DEBUG EASY TREND3] {symbol} | (TOTAL) SlopeNormalized: {slope_normalized}, "
-            f"First={first_candle:.4f}, Last={last_candle:.4f}"
-        )
-
-    max_price = np.max(values)
-    min_price = np.min(values)
-    range_pct = (max_price - min_price) / np.mean(values) * 100
-    if range_pct < 0.5:
-        return 0.0
-
-    delta = np.diff(values)
-    gain = np.where(delta > 0, delta, 0)
-    loss = np.where(delta < 0, -delta, 0)
-    avg_gain = np.mean(gain[-rsi_period:])
-    avg_loss = np.mean(loss[-rsi_period:])
-    rs = avg_gain / avg_loss if avg_loss != 0 else np.inf
-    rsi = 100 - (100 / (1 + rs))
-
-    if rsi < rsi_low_cutoff or rsi > rsi_high_cutoff:
-        return 0.0
-
-    return float(slope_normalized)
-
-def calculate_easy_trend2_with_rsi(symbol, lookback=50, rsi_period=14,
-                                   rsi_low_cutoff=30, rsi_high_cutoff=70):
-    """
-    Calculate an 'easy trend 2' score using RSI filter.
-    Uses ohlc4 (average of open, high, low, close) instead of close values.
-    For >=10 candles, slope is based on start/end ohlc4 per segment and normalized.
-    """
-
-    df = fetch_4h_ohlcv(symbol)
-    if df is None or df.empty or len(df) < lookback:
-        return 0.0
-
-    # Compute ohlc4
-    ohlc4 = ((df['open'] + df['high'] + df['low'] + df['close']) / 4.0).astype(float)
-    values = ohlc4.tail(lookback).values
-
-    # For <=9 candles, same as trendest but on ohlc4
-    if len(values) <= 9:
-        x = np.arange(len(values))
-        slope, _ = np.polyfit(x, values, 1)
-        slope_normalized = slope / np.mean(values)
-    else:
-        segment_size = 5
-        num_segments = len(values) // segment_size
-        values = values[-num_segments * segment_size:]  # trim to multiple of 5
-
-        segment_slopes = []
-        for i in range(num_segments):
-            segment = values[i * segment_size:(i + 1) * segment_size]
-            start_price = segment[0]
-            end_price = segment[-1]
-            mean_price = np.mean(segment)
-            raw_slope = end_price - start_price
-            normalized_slope = raw_slope / mean_price
-
-            # Debug print for each segment
-            debug(
-                f"[DEBUG EASY TREND2] {symbol} | Segment {i+1}/{num_segments} | "
-                f"Start={start_price:.4f}, End={end_price:.4f}, "
-                f"RawSlope={raw_slope:.6f}, NormSlope={normalized_slope:.6f}"
-            )
-
-            segment_slopes.append(normalized_slope)
-
-        # Require at least 80% of segment slopes to be positive or negative
-        positive_count = sum(1 for s in segment_slopes if s > 0)
-        negative_count = sum(1 for s in segment_slopes if s < 0)
-        required_count = int(len(segment_slopes) * 0.8)
-
-        if positive_count >= required_count:
-            # Mostly uptrend
-            pass
-        elif negative_count >= required_count:
-            # Mostly downtrend
-            pass
-        else:
-            return 0.0
-
-        slope_normalized = sum(segment_slopes)
-        print_with_date(
-            f"[DEBUG EASY TREND2] {symbol} | (TOTAL) SlopeNormalized: {slope_normalized}"
-        )
-
-    # Range filter: avoid range-bound symbols
-    max_price = np.max(values)
-    min_price = np.min(values)
-    range_pct = (max_price - min_price) / np.mean(values) * 100
-    if range_pct < 0.5:
-        return 0.0
-
-    # Compute RSI on ohlc4
-    delta = np.diff(values)
-    gain = np.where(delta > 0, delta, 0)
-    loss = np.where(delta < 0, -delta, 0)
-    avg_gain = np.mean(gain[-rsi_period:])
-    avg_loss = np.mean(loss[-rsi_period:])
-    rs = avg_gain / avg_loss if avg_loss != 0 else np.inf
-    rsi = 100 - (100 / (1 + rs))
-
-    if rsi < rsi_low_cutoff or rsi > rsi_high_cutoff:
-        return 0.0
-
-    return float(slope_normalized)
-
-def calculate_easy_trend_with_rsi(symbol, lookback=50, rsi_period=14,
-                                  rsi_low_cutoff=30, rsi_high_cutoff=70):
-    """
-    Calculate an 'easy trend' score using RSI filter.
-    For >=10 candles, slope is based on start/end closes per segment and normalized.
-    """
-
-    df = fetch_4h_ohlcv(symbol)
-    if df is None or df.empty or len(df) < lookback:
-        return 0.0
-
-    closes = df['close'].astype(float).tail(lookback).values
-
-    # For <=9 candles, same as the trendest version
-    if len(closes) <= 9:
-        x = np.arange(len(closes))
-        slope, _ = np.polyfit(x, closes, 1)
-        slope_normalized = slope / np.mean(closes)
-    else:
-        # Divide into 5-candle segments
-        segment_size = 5
-        num_segments = len(closes) // segment_size
-        closes = closes[-num_segments * segment_size:]  # trim to multiple of 5
-
-        segment_slopes = []
-        for i in range(num_segments):
-            segment = closes[i * segment_size:(i + 1) * segment_size]
-            start_price = segment[0]
-            end_price = segment[-1]
-            mean_price = np.mean(segment)
-            raw_slope = end_price - start_price
-            normalized_slope = raw_slope / mean_price
-
-            # Debug print for each segment
-            debug(
-                f"[DEBUG EASY TREND] {symbol} | Segment {i+1}/{num_segments} | "
-                f"Start={start_price:.4f}, End={end_price:.4f}, "
-                f"RawSlope={raw_slope:.6f}, NormSlope={normalized_slope:.6f}"
-            )
-
-            segment_slopes.append(normalized_slope)
-
-        # Require at least 80% of segment slopes to be positive or negative
-        positive_count = sum(1 for s in segment_slopes if s > 0)
-        negative_count = sum(1 for s in segment_slopes if s < 0)
-        required_count = int(len(segment_slopes) * 0.8)
-
-        if positive_count >= required_count:
-            # Mostly uptrend
-            pass
-        elif negative_count >= required_count:
-            # Mostly downtrend
-            pass
-        else:
-            # Mixed trend, discard
-            return 0.0
-
-        slope_normalized = sum(segment_slopes)
-        # Debug print for each segment
-        print_with_date(
-            f"[DEBUG EASY TREND] {symbol} | (TOTAL) SlopeNormalized: {slope_normalized}"
-        )
-
-    # Range filter: avoid range-bound symbols
-    max_price = np.max(closes)
-    min_price = np.min(closes)
-    range_pct = (max_price - min_price) / np.mean(closes) * 100
-    if range_pct < 0.5:
-        return 0.0
-
-    # Compute RSI
-    delta = np.diff(closes)
-    gain = np.where(delta > 0, delta, 0)
-    loss = np.where(delta < 0, -delta, 0)
-    avg_gain = np.mean(gain[-rsi_period:])
-    avg_loss = np.mean(loss[-rsi_period:])
-    rs = avg_gain / avg_loss if avg_loss != 0 else np.inf
-    rsi = 100 - (100 / (1 + rs))
-
-    # Apply RSI cutoffs
-    if rsi < rsi_low_cutoff or rsi > rsi_high_cutoff:
-        return 0.0
-
-    return float(slope_normalized)
-
-def calculate_trendest_with_rsi(symbol, lookback=50, rsi_period=14,
-                                rsi_low_cutoff=30, rsi_high_cutoff=70):
-    """
-    Calculate a 'trendest' score with RSI filter.
-    Requires all segments to have the same slope direction.
-    """
-
-    df = fetch_4h_ohlcv(symbol)
-    if df is None or df.empty or len(df) < lookback:
-        return 0.0
-
-    closes = df['close'].astype(float).tail(lookback).values
-
-    # Handle short lookbacks as the old version
-    if len(closes) <= 9:
-        x = np.arange(len(closes))
-        slope, _ = np.polyfit(x, closes, 1)
-        slope_normalized = slope / np.mean(closes)
-    else:
-        # Divide into 5-candle segments
-        segment_size = 5
-        num_segments = len(closes) // segment_size
-        closes = closes[-num_segments * segment_size:]  # trim to multiple of 5
-
-        segment_slopes = []
-        for i in range(num_segments):
-            segment = closes[i * segment_size:(i + 1) * segment_size]
-            x = np.arange(len(segment))
-            seg_slope, _ = np.polyfit(x, segment, 1)
-            segment_slopes.append(seg_slope / np.mean(segment))
-
-        # Check if all slopes have the same sign
-        all_positive = all(s > 0 for s in segment_slopes)
-        all_negative = all(s < 0 for s in segment_slopes)
-        if not (all_positive or all_negative):
-            return 0.0
-
-        # Slope is sum of segment slopes
-        slope_normalized = sum(segment_slopes)
-
-    # Range filter: avoid range-bound symbols
-    max_price = np.max(closes)
-    min_price = np.min(closes)
-    range_pct = (max_price - min_price) / np.mean(closes) * 100
-    if range_pct < 0.5:
-        return 0.0
-
-    # Compute RSI
-    delta = np.diff(closes)
-    gain = np.where(delta > 0, delta, 0)
-    loss = np.where(delta < 0, -delta, 0)
-    avg_gain = np.mean(gain[-rsi_period:])
-    avg_loss = np.mean(loss[-rsi_period:])
-    rs = avg_gain / avg_loss if avg_loss != 0 else np.inf
-    rsi = 100 - (100 / (1 + rs))
-
-    # Apply RSI cutoffs
-    if rsi < rsi_low_cutoff or rsi > rsi_high_cutoff:
-        return 0.0
-
-    return float(slope_normalized)
-
-def calculate_trend_with_rsi(symbol, lookback=50, rsi_period=14, rsi_low_percentile=10, rsi_high_percentile=90):
-    """
-    Calculate a trend score for a symbol based on slope and RSI filter.
-    Returns a positive or negative value, or 0 for range-bound symbols.
-    """
-
-    # Fetch candles using the cached function
-    df = fetch_4h_ohlcv(symbol)
-    if df is None or df.empty or len(df) < lookback:
-        return 0.0
-
-    closes = df['close'].astype(float).tail(lookback).values
-
-    # 1️ - Compute slope using linear regression
-    x = np.arange(len(closes))
-    slope, _ = np.polyfit(x, closes, 1)
-
-    # Normalize slope by price to make it relative
-    slope_normalized = slope / np.mean(closes)
-
-    # 2️ - Range filter: if max-min is small, consider it range-bound
-    max_price = np.max(closes)
-    min_price = np.min(closes)
-    range_pct = (max_price - min_price) / np.mean(closes) * 100
-    if range_pct < 0.5:  # threshold can be tuned
-        return 0.0
-
-    # 3️ - Compute RSI
-    delta = np.diff(closes)
-    gain = np.where(delta > 0, delta, 0)
-    loss = np.where(delta < 0, -delta, 0)
-    avg_gain = np.mean(gain[-rsi_period:])
-    avg_loss = np.mean(loss[-rsi_period:])
-    rs = avg_gain / avg_loss if avg_loss != 0 else np.inf
-    rsi = 100 - (100 / (1 + rs))
-
-    # 4️ - Apply RSI percentile filter
-    if rsi < rsi_low_percentile or rsi > rsi_high_percentile:
-        return 0.0
-
-    return float(slope_normalized)
-
-def calculate_ema_trend_score(symbol, lookback=50):
-    df = fetch_4h_ohlcv(symbol)  # currently returns 5m candles
-    if df is None or len(df) < lookback:
-        return 0
-
-    df['ema'] = df['close'].ewm(span=lookback, adjust=False).mean()
-    # Slope = difference between last EMA and EMA N bars ago
-    slope = df['ema'].iloc[-1] - df['ema'].iloc[-lookback]
-    return slope
-
-def calculate_atr(df, period=14, ma='SMA', ma_period=48):
-    """
-    Calculate the Average True Range (ATR) using specified moving average method.
-
-    Args:
-        df (pd.DataFrame): DataFrame containing 'high', 'low', and 'close' columns.
-        period (int): The period for True Range calculation (typically 14).
-        ma (str): Type of moving average - 'SMA', 'EMA', 'RMA', or 'Highest'.
-        ma_period (int): The period for the moving average (default is same as `period`).
-
-    Returns:
-        float: The latest ATR value.
-    """
-    if ma_period is None:
-        ma_period = period
-
-    df['H-L'] = df['high'] - df['low']
-    df['H-PC'] = abs(df['high'] - df['close'].shift(1))
-    df['L-PC'] = abs(df['low'] - df['close'].shift(1))
-    df['TR'] = df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
-
-    ma = ma.upper()
-    if ma == 'SMA':
-        df['ATR'] = df['TR'].rolling(window=ma_period).mean()
-    elif ma == 'EMA':
-        df['ATR'] = df['TR'].ewm(span=ma_period, adjust=False).mean()
-    elif ma == 'RMA':
-        df['ATR'] = df['TR'].ewm(alpha=1 / ma_period, adjust=False).mean()
-    elif ma == 'HIGHEST':
-        df['ATR'] = df['TR'].rolling(window=ma_period).max()
-    else:
-        raise ValueError("Invalid ma type. Use 'SMA', 'EMA', 'RMA', or 'Highest'.")
-
-    return df['ATR'].iloc[-1]
-
-def calculate_trailing_start_from_atr(symbol, multiplier=2.125, ma='HIGHEST', ma_period=48):
-    df = fetch_4h_ohlcv(symbol)
-    if df is None:
-        return None
-    atr = calculate_atr(df, ma_period=ATR_MA_PERIOD, ma=ma)
-    last_close = df['close'].iloc[-1]
-    atr_percent = (atr / last_close) * 100
-    trailing_start = round(atr_percent * multiplier, 2)
-    print_with_date(f"[ATR] {symbol} {ma}(ATR(ma_period)) = {atr:.2f}, % = {atr_percent:.2f}, TRAILING_START = {trailing_start}%")
-    return trailing_start
-
 # === DEBUG MODE ===
-DEBUG_MODE = False  # Set to False to disable debug logs
-
-def bool_to_int(value: bool) -> int:
-    return 1 if value else 0
-
-def int_to_bool(value: int) -> bool:
-    return bool(value)
-
-def debug_latest_trades(symbol, limit=10):
-    try:
-        url_path = '/api/v2.2/user/trade_history'
-        url = BASE_URL + url_path
-        nonce = str(int(time.time() * 1000))
-        sig = generate_signature(API_SECRET, url_path, nonce, "")
-        headers = {
-            'request-api': API_KEY,
-            'request-nonce': nonce,
-            'request-sign': sig,
-            'Content-Type': 'application/json'
-        }
-        params = {
-            'symbol': symbol,
-            'includeOld': 'true',
-            'count': limit  # Get latest N trades
-        }
-        response = throttled_request("GET", url, headers=headers, params=params)
-        response.raise_for_status()
-        trades = response.json()
-
-        print_with_date(f"[DEBUG] Showing latest {limit} trades:")
-        for i, trade in enumerate(trades, 1):
-            print_with_date(
-                f"{i}. Trade={trade}"
-            )
-        return trades
-
-    except Exception as e:
-        print_with_date(f"[ERROR] Failed to fetch trade history: {e}")
-        return []
-
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS positions (
-            pid TEXT,
-            position_id TEXT,
-            opening_order_id TEXT,
-            closing_order_id TEXT,
-            side TEXT,
-            callback REAL,
-            active INTEGER,
-            opening_price TEXT,
-            trail_value REAL,
-            symbol TEXT,
-            opened_at REAL,
-            PRIMARY KEY (pid, symbol)
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-def show_positions(symbol):
-    print_with_date("[POSITIONS LOADED FROM DB]")
-    if not positions[symbol]:
-        print_with_date(f"No {symbol} positions stored.")
-        return
-    for pid, info in positions[symbol].items():
-        print_with_date(
-            f"[STORED] {symbol} | {info['side']} | Callback: {info['callback']}%"
-        )
-
-def load_positions(symbol):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(f"SELECT pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, opened_at FROM positions WHERE symbol = \"{symbol}\"")
-    rows = c.fetchall()
-    conn.close()
-    for pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, opened_at in rows:
-        positions[symbol][pid] = {
-            "position_id": position_id,
-            "opening_order_id": opening_order_id,
-            "closing_order_id": closing_order_id,
-            "side": side,
-            "callback": callback,
-            "active": int_to_bool(active),
-            "trail_value": trail_value,
-            "opened_at": opened_at,
-        }
-
-def update_position(pid, info, symbol):
-
-    # Undefined opening_price workaround
-    if "opening_price" not in info:
-        opening_price = 0.0
-        info["opening_price"] = opening_price
-    else:
-        opening_price = info["opening_price"]
-
-    # Undefined trail_value workaround
-    if "trail_value" not in info:
-        trail_value = 0.0
-    else:
-        trail_value = info["trail_value"]
-
-    # Undefined opened_at workaround
-    if "opened_at" not in info:
-        opened_at = time.time()
-    else:
-        opened_at = info["opened_at"]
-
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''
-        INSERT INTO positions (pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, symbol, opened_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(pid, symbol) DO UPDATE SET
-            position_id=excluded.position_id,
-            opening_order_id=excluded.opening_order_id,
-            closing_order_id=excluded.closing_order_id,
-            side=excluded.side,
-            callback=excluded.callback,
-            active=excluded.active,
-            opening_price=excluded.opening_price,
-            trail_value=excluded.trail_value,
-            symbol=excluded.symbol,
-            opened_at=excluded.opened_at
-    ''', (pid, info['position_id'], info['opening_order_id'], info['closing_order_id'], info['side'], float(info['callback']), bool_to_int(info['active']), opening_price, trail_value, symbol, opened_at))
-    conn.commit()
-    conn.close()
-
-def clear_positions(symbol):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(f"DELETE FROM positions WHERE symbol = \"{symbol}\"")
-    conn.commit()
-    conn.close()
-
-def init_known_symbols_db():
-    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS symbols (
-            symbol TEXT PRIMARY KEY,
-            status TEXT NOT NULL
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-def update_symbol_registry(symbols):
-    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
-    c = conn.cursor()
-
-    for sym in symbols:
-        c.execute("SELECT status FROM symbols WHERE symbol=?", (sym,))
-        row = c.fetchone()
-        if not row:
-            # new symbol → status = 'new'
-            c.execute("INSERT INTO symbols (symbol, status) VALUES (?, ?)", (sym, "new"))
-
-    conn.commit()
-    conn.close()
-
-def set_symbol_as_ready(symbol):
-    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
-    c = conn.cursor()
-
-    # Check if the symbol already exists
-    c.execute("SELECT 1 FROM symbols WHERE symbol=?", (symbol,))
-    exists = c.fetchone() is not None
-
-    if exists:
-        c.execute("UPDATE symbols SET status=? WHERE symbol=?", ("ready", symbol))
-    else:
-        c.execute("INSERT INTO symbols (symbol, status) VALUES (?, ?)", (symbol, "ready"))
-
-    conn.commit()
-    conn.close()
-
-# === Setup helpers from symbols_setup.py ===
-import json  # ensure json is imported in main.py if not already
-
-def setup_symbol_modes():
-    new_symbols = get_new_symbols()
-
-    for sym in new_symbols:
-        update_symbol_settings(sym)  # run the actual setup
-        print_with_date(f"[SETUP] {sym}: Setting up trading mode → status = 'ready'")
-        set_symbol_as_ready(sym)
-
-def get_new_symbols():
-    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT symbol FROM symbols WHERE status='new'")
-    result = [r[0] for r in c.fetchall()]
-    conn.close()
-    return result
-
-def get_ready_symbols():
-    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT symbol FROM symbols WHERE status='ready'")
-    result = [r[0] for r in c.fetchall()]
-    conn.close()
-    return result
-
-def filter_old_symbols(summary_data):
-    cutoff = datetime.now(timezone.utc) - timedelta(days=MIN_CONTRACT_AGE_DAYS)
-    eligible = []
-    for entry in summary_data:
-        contract_start = datetime.fromtimestamp(entry.get("contractStart", 0) / 1000, tz=timezone.utc)
-        if contract_start <= cutoff:
-            eligible.append(entry["symbol"])
-    return eligible
-
-def get_active_symbols_from_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT DISTINCT symbol, side FROM positions WHERE active = 1")
-    rows = c.fetchall()
-    conn.close()
-
-    active_symbols = {}
-    for symbol, side in rows:
-        if symbol not in active_symbols:
-            active_symbols[symbol] = set()
-        active_symbols[symbol].add(side)
-    return active_symbols  # e.g. {'BTC-PERP': {'LONG'}, 'ETH-PERP': {'SHORT'}}
-
-def debug(msg):
-    if DEBUG_MODE:
-        print_with_date(f"[DEBUG] {msg}")
-
-# === Custom Print Function ===
-def print_with_date(msg, end='\n'):
-    timestamp = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
-    print(f"{timestamp} {msg}", end=end)
-    check_sleep_start=True
+state.DEBUG_MODE = False  # Set to False to disable debug logs
 
 # === Import Configuration ===
-from config import API_KEY, API_SECRET, BASE_URL, DB_PATH
+from config import DB_PATH
 
 # === Default Values ===
 DEFAULT_SYMBOL_CONFIGS = {
@@ -978,8 +91,8 @@ DEFAULT_SYMBOL_CONFIGS = {
     }
 }
 
-TRAILING_STEP_MULTIPLIER_DEFAULT = 0.375  # default global value
-TRAILING_COUNT_DEFAULT = 1
+state.DEFAULT_TRAILING_STEP_MULTIPLIER = 0.375  # default global value
+state.DEFAULT_TRAILING_COUNT = 1
 DEFAULT_TOP_SYMBOLS_BY_VOLUME = 1000
 DEFAULT_TRADE_MAX_CANDLES = 50
 DEFAULT_CANDLE_INTERVAL_MINUTES = 5
@@ -1003,109 +116,46 @@ DEFAULT_RANGE_STOP_LOSS_PCT = 0.5
 DEFAULT_MAXIMUM_LONG_TRADES_NUMBER = 6
 DEFAULT_MAXIMUM_SHORT_TRADES_NUMBER = 6
 
-KNOWN_SYMBOLS_DB_PATH = "known_symbols.db"
-MIN_CONTRACT_AGE_DAYS = 15
-
 # Default client name is the directory name where script is running
 DEFAULT_CLIENT_NAME = os.path.basename(os.getcwd())
 
-SYMBOL_CONFIGS = safe_override_import_or_default("override_config", "SYMBOL_CONFIGS", DEFAULT_SYMBOL_CONFIGS)
-API_DELAY_MS = safe_override_import_or_default("override_config", "API_DELAY_MS", DEFAULT_API_DELAY_MS)
-ATR_MA_PERIOD = safe_override_import_or_default("override_config", "ATR_MA_PERIOD", DEFAULT_ATR_MA_PERIOD)
-TOP_SYMBOLS_BY_VOLUME = safe_override_import_or_default("override_config", "TOP_SYMBOLS_BY_VOLUME", DEFAULT_TOP_SYMBOLS_BY_VOLUME)
-TRADE_MAX_CANDLES = safe_override_import_or_default("override_config", "TRADE_MAX_CANDLES", DEFAULT_TRADE_MAX_CANDLES)
-CANDLE_INTERVAL_MINUTES = safe_override_import_or_default("override_config", "CANDLE_INTERVAL_MINUTES", DEFAULT_CANDLE_INTERVAL_MINUTES)
-VOL_BOTTOM_PERCENTILE = safe_override_import_or_default("override_config", "VOL_BOTTOM_PERCENTILE", DEFAULT_VOL_BOTTOM_PERCENTILE)
-VOL_TOP_PERCENTILE = safe_override_import_or_default("override_config", "VOL_TOP_PERCENTILE", DEFAULT_VOL_TOP_PERCENTILE)
-REOPEN_ON_WIN = safe_override_import_or_default("override_config", "REOPEN_ON_WIN", DEFAULT_REOPEN_ON_WIN)
-REOPEN_ON_BREAKEVEN = safe_override_import_or_default("override_config", "REOPEN_ON_BREAKEVEN", DEFAULT_REOPEN_ON_BREAKEVEN)
-RANGE_ENTRY_OFFSET_PCT = safe_override_import_or_default("override_config", "RANGE_ENTRY_OFFSET_PCT", DEFAULT_RANGE_ENTRY_OFFSET_PCT)
-RANGE_TAKE_PROFIT_PCT = safe_override_import_or_default("override_config", "RANGE_TAKE_PROFIT_PCT", DEFAULT_RANGE_TAKE_PROFIT_PCT)
-RANGE_STOP_LOSS_PCT = safe_override_import_or_default("override_config", "RANGE_STOP_LOSS_PCT", DEFAULT_RANGE_STOP_LOSS_PCT)
+state.SYMBOL_CONFIGS = safe_override_import_or_default("override_config", "SYMBOL_CONFIGS", DEFAULT_SYMBOL_CONFIGS)
+state.API_DELAY_MS = safe_override_import_or_default("override_config", "API_DELAY_MS", DEFAULT_API_DELAY_MS)
+state.ATR_MA_PERIOD = safe_override_import_or_default("override_config", "ATR_MA_PERIOD", DEFAULT_ATR_MA_PERIOD)
+state.TOP_SYMBOLS_BY_VOLUME = safe_override_import_or_default("override_config", "TOP_SYMBOLS_BY_VOLUME", DEFAULT_TOP_SYMBOLS_BY_VOLUME)
+state.TRADE_MAX_CANDLES = safe_override_import_or_default("override_config", "TRADE_MAX_CANDLES", DEFAULT_TRADE_MAX_CANDLES)
+state.CANDLE_INTERVAL_MINUTES = safe_override_import_or_default("override_config", "CANDLE_INTERVAL_MINUTES", DEFAULT_CANDLE_INTERVAL_MINUTES)
+state.VOL_BOTTOM_PERCENTILE = safe_override_import_or_default("override_config", "VOL_BOTTOM_PERCENTILE", DEFAULT_VOL_BOTTOM_PERCENTILE)
+state.VOL_TOP_PERCENTILE = safe_override_import_or_default("override_config", "VOL_TOP_PERCENTILE", DEFAULT_VOL_TOP_PERCENTILE)
+state.REOPEN_ON_WIN = safe_override_import_or_default("override_config", "REOPEN_ON_WIN", DEFAULT_REOPEN_ON_WIN)
+state.REOPEN_ON_BREAKEVEN = safe_override_import_or_default("override_config", "REOPEN_ON_BREAKEVEN", DEFAULT_REOPEN_ON_BREAKEVEN)
+state.RANGE_ENTRY_OFFSET_PCT = safe_override_import_or_default("override_config", "RANGE_ENTRY_OFFSET_PCT", DEFAULT_RANGE_ENTRY_OFFSET_PCT)
+state.RANGE_TAKE_PROFIT_PCT = safe_override_import_or_default("override_config", "RANGE_TAKE_PROFIT_PCT", DEFAULT_RANGE_TAKE_PROFIT_PCT)
+state.RANGE_STOP_LOSS_PCT = safe_override_import_or_default("override_config", "RANGE_STOP_LOSS_PCT", DEFAULT_RANGE_STOP_LOSS_PCT)
+state.CLIENT_NAME = safe_override_import_or_default("override_config", "CLIENT_NAME", DEFAULT_CLIENT_NAME)
+state.ADDITIONAL_SYMBOLS = safe_override_import_or_default("override_config", "ADDITIONAL_SYMBOLS", DEFAULT_ADDITIONAL_SYMBOLS)
+state.EXCLUDED_SYMBOLS = safe_override_import_or_default("override_config", "EXCLUDED_SYMBOLS", DEFAULT_EXCLUDED_SYMBOLS)
+
+state.KNOWN_SYMBOLS_DB_PATH = "known_symbols.db"
+state.DB_PATH = DB_PATH
+state.MIN_CONTRACT_AGE_DAYS = 15
+
+state.CONTRACTS_MAP = {}
+state.CONTRACT_SIZES = {}
+state.MIN_PRICE_INCREMENTS = {}
+
+state.LAST_AVAILABLE_BALANCE = None
+
+state.TRENDRANGE_CACHE_TIMEOUT = 5 * 60  # 5 minutes
+
 MAXIMUM_LONG_TRADES_NUMBER = safe_override_import_or_default("override_config", "MAXIMUM_LONG_TRADES_NUMBER", DEFAULT_MAXIMUM_LONG_TRADES_NUMBER)
 MAXIMUM_SHORT_TRADES_NUMBER = safe_override_import_or_default("override_config", "MAXIMUM_SHORT_TRADES_NUMBER", DEFAULT_MAXIMUM_SHORT_TRADES_NUMBER)
-CLIENT_NAME = safe_override_import_or_default("override_config", "CLIENT_NAME", DEFAULT_CLIENT_NAME)
-ADDITIONAL_SYMBOLS = safe_override_import_or_default("override_config", "ADDITIONAL_SYMBOLS", DEFAULT_ADDITIONAL_SYMBOLS)
-EXCLUDED_SYMBOLS = safe_override_import_or_default("override_config", "EXCLUDED_SYMBOLS", DEFAULT_EXCLUDED_SYMBOLS)
-
-CONTRACTS_MAP = {}
-CONTRACT_SIZES = {}
-MIN_PRICE_INCREMENTS = {}
-
-LAST_AVAILABLE_BALANCE = None
-
-# { symbol: (dataframe, timestamp) }
-OHLCV_CACHE = {}
-OHLCV_CACHE_TIMEOUT = timedelta(minutes=5)
-
-TRENDRANGE_CACHE = {}  # symbol → (timestamp, result)
-TRENDRANGE_CACHE_TIMEOUT = 5 * 60  # 5 minutes
 
 MARKET_SUMMARY_CACHE = {
     "data": None,
     "timestamp": None,
 }
 MARKET_SUMMARY_CACHE_TIMEOUT = timedelta(hours=1)
-
-def get_available_balance(currency="USDT"):
-    """
-    Query the CROSS wallet and return the available balance for the given currency.
-    Prints balance change with color.
-    """
-    global LAST_AVAILABLE_BALANCE
-
-    try:
-        url_path = "/api/v2.2/user/wallet"
-        url = BASE_URL + url_path
-
-        nonce = str(int(time.time() * 1000))
-        sig = generate_signature(API_SECRET, url_path, nonce, "")
-
-        headers = {
-            'request-api': API_KEY,
-            'request-nonce': nonce,
-            'request-sign': sig
-        }
-
-        response = throttled_request("GET", url, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-
-        cross_wallet = next((w for w in data if w.get("wallet") == "CROSS@"), None)
-        if not cross_wallet:
-            print_with_date("[BALANCE] No CROSS@ wallet found.")
-            return Decimal("0")
-
-        available_balance = Decimal(str(cross_wallet.get("availableBalance", 0)))
-
-        # Compute change
-        balance_change = None
-        if LAST_AVAILABLE_BALANCE is not None:
-            balance_change = available_balance - LAST_AVAILABLE_BALANCE
-
-        # Save for next call
-        LAST_AVAILABLE_BALANCE = available_balance
-
-        # Format change with color
-        change_str = ""
-        if balance_change is not None:
-            if balance_change > 0:
-                change_str = f"\033[92mChange: +{balance_change:.2f} {currency}\033[0m"
-            elif balance_change < 0:
-                change_str = f"\033[91mChange: {balance_change:.2f} {currency}\033[0m"
-            else:
-                change_str = f"Change: 0.00 {currency}"
-
-        if change_str:
-            print_with_date(f"[BALANCE] Available {currency}: {available_balance} | {change_str}")
-        else:
-            print_with_date(f"[BALANCE] Available {currency}: {available_balance}")
-
-        return available_balance
-
-    except Exception as e:
-        print_with_date(f"[BALANCE ERROR] {e}")
-        return Decimal("0")
 
 def prune_market_summary_cache():
     if MARKET_SUMMARY_CACHE["timestamp"] is None:
@@ -1114,32 +164,8 @@ def prune_market_summary_cache():
         MARKET_SUMMARY_CACHE["data"] = None
         MARKET_SUMMARY_CACHE["timestamp"] = None
 
-def filter_symbols_by_age_and_volume(market_summary):
-    # Filter symbols older than MIN_CONTRACT_AGE_DAYS
-    aged_symbols = filter_old_symbols(market_summary)  # list of strings
-    aged_symbol_names = set(aged_symbols)
-
-    # Fetch top volume symbols (no filtering parameter)
-    top_symbols = fetch_top_symbols_by_volume(limit=TOP_SYMBOLS_BY_VOLUME)
-
-    # Keep only aged symbols from the top volume list
-    filtered_top_symbols = [s for s in top_symbols if s in aged_symbol_names]
-
-    # Add forced additional symbols
-    combined = filtered_top_symbols + ADDITIONAL_SYMBOLS
-
-    # Remove excluded and deduplicate
-    seen = set()
-    final = []
-    for s in combined:
-        if s not in EXCLUDED_SYMBOLS and s not in seen:
-            final.append(s)
-            seen.add(s)
-
-    return final
-
 def get_final_symbol_list():
-    top_symbols = fetch_top_symbols_by_volume(limit=TOP_SYMBOLS_BY_VOLUME)
+    top_symbols = exchange.fetch_top_symbols_by_volume(limit=TOP_SYMBOLS_BY_VOLUME)
 
     # Include additional symbols
     combined = top_symbols + ADDITIONAL_SYMBOLS
@@ -1153,196 +179,7 @@ def get_final_symbol_list():
             seen.add(s)
     return final
 
-def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_type='EASY6',
-                           vol_bottom_percentile=None, vol_top_percentile=None):
-    """
-    Rank and filter symbols based on trend score and normalized ATR%.
-    Skips symbols with 0.0 score and ensures longs are positive slopes, shorts are negative.
-    """
-
-    if vol_bottom_percentile is None:
-        vol_bottom_percentile = VOL_BOTTOM_PERCENTILE
-    if vol_top_percentile is None:
-        vol_top_percentile = VOL_TOP_PERCENTILE
-
-    trend_scores = {}
-    atr_percents = {}
-
-    for symbol in symbols:
-        # Compute score based on rank type
-        if rank_type == 'EMA':
-            score = calculate_ema_trend_score(symbol)
-        elif rank_type == 'TRENDEST':
-            score = calculate_trendest_with_rsi(symbol)
-        elif rank_type == 'EASY':
-            score = calculate_easy_trend_with_rsi(symbol)
-        elif rank_type == 'EASY2':
-            score = calculate_easy_trend2_with_rsi(symbol)
-        elif rank_type == 'EASY3':
-            score = calculate_easy_trend3_with_rsi(symbol)
-        elif rank_type == 'EASY4':
-            score = calculate_easy_trend4_with_rsi(symbol)
-        elif rank_type == 'EASY5':
-            score = calculate_easy_trend5_with_rsi(symbol)
-        elif rank_type == 'EASY6':
-            score = calculate_easy_trend6_with_rsi(symbol)
-        else:
-            raise ValueError(f"Unsupported rank_type: {rank_type}")
-
-        # 🔹 Skip symbols with neutral trend
-        if score == 0.0:
-            continue
-
-        trend_scores[symbol] = score
-
-        atr = get_atr(symbol)
-        price = get_current_price(symbol)
-        atr_percent = (Decimal(str(atr)) / Decimal(str(price))) * Decimal("100")
-        atr_percents[symbol] = atr_percent
-
-    # 🔹 If no symbols survived, return None
-    if not trend_scores:
-        print_with_date("[SYMBOLS] No valid symbols after scoring. Returning None.")
-        return None, None, None
-
-    # Compute ATR percentiles
-    atr_values = [float(v) for v in atr_percents.values()]
-    low_cut = np.percentile(atr_values, vol_bottom_percentile)
-    high_cut = np.percentile(atr_values, vol_top_percentile)
-
-    # ✅ Instead of filtering, just use all symbols
-    filtered_symbols = list(trend_scores.keys())
-
-    if not filtered_symbols:
-        print_with_date("[SYMBOLS] No symbols within ATR percentile range. Returning None.")
-        return None, None, None
-
-    # Normalize ATR values
-    max_atr = max(float(atr_percents[s]) for s in filtered_symbols)
-    adjusted_scores = {
-        s: float(trend_scores[s]) * (float(atr_percents[s]) / max_atr)
-        for s in filtered_symbols
-    }
-
-    # Sort symbols by adjusted score
-    sorted_symbols = sorted(adjusted_scores.items(), key=lambda x: x[1], reverse=True)
-
-    # 🔹 Ensure longs are positive and shorts are negative slopes
-    long_symbols = [s for s, score in sorted_symbols if score > 0][:long_top_number]
-    short_symbols = [s for s, score in sorted(adjusted_scores.items(), key=lambda x: x[1]) if score < 0][:short_top_number]
-
-    final_symbols = long_symbols + short_symbols
-    print_with_date(f"[SYMBOLS] ATR cut: low={low_cut:.4f}, high={high_cut:.4f}")
-    print_with_date(f"[SYMBOLS] Selected LONG: {long_symbols} | SHORT: {short_symbols}")
-
-    return final_symbols, long_symbols, short_symbols
-
-def compute_contracts_from_prices(symbols, contract_sizes):
-    prices = {}
-    notional_per_contract = {}
-    per_contract_losses = {}
-
-    for symbol in symbols:
-        price = get_current_price(symbol)
-        if price is None or symbol not in contract_sizes:
-            continue
-        price = Decimal(str(price))
-        size = contract_sizes[symbol]
-        notional = price * size
-        trail_percent = Decimal(str(TRAILING_STOPS_MAP.get(symbol, [1])[0])) / Decimal("100")
-
-        prices[symbol] = price
-        notional_per_contract[symbol] = notional
-        per_contract_losses[symbol] = notional * trail_percent
-
-    if not per_contract_losses:
-        return {}, Decimal("0")
-
-    available_usdt = get_available_balance("USDT")
-    target_budget = Decimal(str(available_usdt)) * Decimal("0.8")
-
-    # Start with 1 contract for each symbol
-    contracts_map = {sym: Decimal("1") for sym in per_contract_losses}
-
-    def total_notional():
-        return sum(contracts_map[sym] * notional_per_contract[sym] for sym in contracts_map)
-
-    def total_loss(sym):
-        return per_contract_losses[sym] * contracts_map[sym]
-
-    # Iteratively increase smallest TotalLoss until we reach the budget
-    while True:
-        current_total_notional = total_notional()
-        if current_total_notional >= target_budget:
-            break
-
-        # Find symbol with smallest TotalLoss
-        symbol_to_increase = min(contracts_map.keys(), key=lambda s: total_loss(s))
-
-        # Check if adding one more contract would exceed the budget
-        projected_notional = current_total_notional + notional_per_contract[symbol_to_increase]
-        if projected_notional > target_budget:
-            break
-
-        # Increase contracts for that symbol
-        contracts_map[symbol_to_increase] += 1
-
-    max_expected_loss = max(total_loss(sym) for sym in contracts_map)
-
-    # Convert to int and log
-    final_contracts_map = {}
-    for symbol in contracts_map:
-        c = int(contracts_map[symbol])
-        final_contracts_map[symbol] = c
-        print_with_date(
-            f"[SIZING] {symbol}: Price={prices[symbol]}, Notional/Contract={notional_per_contract[symbol]}, "
-            f"PerContractLoss={per_contract_losses[symbol]}, Contracts={c}, "
-            f"TotalNotional={notional_per_contract[symbol] * c}, TotalLoss={per_contract_losses[symbol] * c}"
-        )
-
-    print_with_date(f"[SIZING] Final TotalNotional={total_notional()}, TargetBudget={target_budget}")
-    return final_contracts_map, max_expected_loss
-
-def build_trailing_stops_map():
-    result = {}
-    for symbol, cfg in SYMBOL_CONFIGS.items():
-        trailing_start = calculate_trailing_start_from_atr(symbol)
-        if trailing_start is None:
-            continue  # or raise/log error
-
-        trailing_start_decimal = Decimal(str(trailing_start))
-        step_multiplier = Decimal(str(cfg.get("TRAILING_STEP_MULTIPLIER", TRAILING_STEP_MULTIPLIER_DEFAULT)))
-        trailing_step = trailing_start_decimal * step_multiplier
-        trailing_count = cfg.get("TRAILING_COUNT", TRAILING_COUNT_DEFAULT)
-
-        result[symbol] = [
-            float(round(trailing_start_decimal + i * trailing_step, 8))
-            for i in range(trailing_count)
-        ]
-    return result
-
-TRAILING_STOPS_MAP = build_trailing_stops_map()
-
-def update_trailing_stops_for_symbol(symbol):
-    cfg = SYMBOL_CONFIGS.get(symbol, {})
-
-    trailing_start = calculate_trailing_start_from_atr(symbol)
-    if trailing_start is None:
-        print_with_date(f"[ERROR] Could not calculate trailing start for {symbol}")
-        return
-
-    trailing_start = Decimal(str(trailing_start))  # Ensure Decimal type
-    step_multiplier = Decimal(str(cfg.get("TRAILING_STEP_MULTIPLIER", TRAILING_STEP_MULTIPLIER_DEFAULT)))
-
-    trailing_step = trailing_start * step_multiplier
-    trailing_count = cfg.get("TRAILING_COUNT", TRAILING_COUNT_DEFAULT)
-
-    TRAILING_STOPS_MAP[symbol] = [
-        round(trailing_start + i * trailing_step, 2)
-        for i in range(trailing_count)
-    ]
-
-    print_with_date(f"[UPDATED TRAILING STOPS] {symbol}: {TRAILING_STOPS_MAP[symbol]}")
+state.TRAILING_STOPS_MAP = build_trailing_stops_map()
 
 # === Constants ===
 CONTRACT_SIZE = 0.00001  # fixed for BTC-PERP on BTSE
@@ -1357,589 +194,12 @@ def generate_signature(api_secret, url_path, nonce, body_str):
     ).hexdigest()
     return signature
 
-# === Place Trailing Stop Order on BTSE ===
-def place_trailing_stop(symbol, position_side, callback_rate, contracts):
-    global MIN_PRICE_INCREMENTS
-    try:
-        current_price = get_current_price(symbol)
-        if not current_price:
-            print_with_date("[ERROR] Failed to get current price.")
-            return None, None, None, None, None
-        callback_rate_float = float(callback_rate)
-
-        min_price_increment = MIN_PRICE_INCREMENTS.get(symbol)
-        if not min_price_increment:
-            raise ValueError(f"No min price increment found for {symbol}")
-
-        precision = abs(Decimal(str(min_price_increment)).as_tuple().exponent)
-        trail_value = round(current_price * (callback_rate_float / 100), precision)
-
-        side = "BUY" if position_side == "SHORT" else "SELL"  # Closing side
-        market_side = "SELL" if position_side == "SHORT" else "BUY"  # Entry side
-
-        url_path = '/api/v2.2/order'
-        full_url = BASE_URL + url_path
-
-        # === Market Order ===
-        debug(f"[DEBUG] Placing MARKET order: {market_side} {contracts} contracts")
-        nonce = str(int(time.time() * 1000))
-        market_order = {
-            "postOnly": False,
-            "price": 0.0,
-            "reduceOnly": False,
-            "side": market_side,
-            "size": contracts,
-            "symbol": symbol,
-            "time_in_force": "GTC",
-            "type": "MARKET",
-            "txType": "LIMIT",
-            "positionMode": "ISOLATED"
-        }
-        market_body_str = json.dumps(market_order, separators=(',', ':'))
-        market_sig = generate_signature(API_SECRET, url_path, nonce, market_body_str)
-        market_headers = {
-            'request-api': API_KEY,
-            'request-nonce': nonce,
-            'request-sign': market_sig,
-            'Content-Type': 'application/json'
-        }
-
-        debug(f"MARKET order payload: {market_body_str}")
-        market_response = throttled_request('POST', full_url, headers=market_headers, data=market_body_str)
-        debug(f"MARKET order response status: {market_response.status_code}")
-        debug(f"MARKET order response body: {market_response.text}")
-        market_response.raise_for_status()
-        market_data = market_response.json()
-        if not isinstance(market_data, list) or not market_data:
-            print_with_date("[ERROR] Unexpected market order response.")
-            return None, None, None, None, None
-
-        position_id = market_data[0].get('positionId')
-        if not position_id:
-            print_with_date("[ERROR] Missing position ID.")
-            return None, None, None, None, None
-
-        opening_order_id = market_data[0].get('orderID')
-        opening_price = market_data[0].get('price')
-
-        debug(f"Placing TRAILING STOP order: {side} with trail {trail_value}")
-        nonce = str(int(time.time() * 1000))
-        trail_order = {
-            "postOnly": False,
-            "price": 0.0,
-            "reduceOnly": True,
-            "side": side,
-            "size": contracts,
-            "symbol": symbol,
-            "time_in_force": "GTC",
-            "trailValue": -trail_value if side == "SELL" else trail_value,
-            "type": "MARKET",
-            "txType": "STOP",
-            "positionMode": "ISOLATED",
-            "positionId": position_id
-        }
-        trail_body_str = json.dumps(trail_order, separators=(',', ':'))
-        trail_sig = generate_signature(API_SECRET, url_path, nonce, trail_body_str)
-        trail_headers = {
-            'request-api': API_KEY,
-            'request-nonce': nonce,
-            'request-sign': trail_sig,
-            'Content-Type': 'application/json'
-        }
-
-        debug(f"TRAILING STOP order payload: {trail_body_str}")
-        trail_response = throttled_request('POST', full_url, headers=trail_headers, data=trail_body_str)
-        debug(f"TRAILING STOP response status: {trail_response.status_code}")
-        debug(f"TRAILING STOP response body: {trail_response.text}")
-        trail_response.raise_for_status()
-        trail_data = trail_response.json()
-        closing_order_id = trail_data[0].get("orderID") if trail_data else None
-
-        if not closing_order_id:
-            print_with_date("[ERROR] Missing trailing stop order ID.")
-            return None, None, None, None, None
-
-        print_with_date(f"[NEW] {symbol} | {position_side} | Callback: {callback_rate}%")
-        return position_id, opening_order_id, closing_order_id, opening_price, trail_value
-    except Exception as e:
-        print_with_date(f"[ERROR] Failed to place order: {e}")
-        return None, None, None, None, None
-
-# === Get All Positions Status (BTSE) ===
-def get_positions_status(symbol=None):
-    try:
-        # Using the correct endpoint to query position status
-        endpoint_path = '/api/v2.2/user/positions'
-        url = BASE_URL + endpoint_path
-
-        # Query parameters: Optionally filter by symbol to get positions for a specific market
-        if (symbol == None):
-            params = {}
-        else:
-            params = {'symbol': symbol}
-
-        # Signature generation (use the correct method for GET requests)
-        nonce = str(int(time.time() * 1000))  # Generate nonce
-        body_str = ""
-        signature = generate_signature(API_SECRET, endpoint_path, nonce, body_str)
-
-        # Headers for authentication
-        headers = {
-            'request-api': API_KEY,
-            'request-nonce': nonce,
-            'request-sign': signature,
-            'Content-Type': 'application/json'
-        }
-
-        if (symbol == None):
-            debug(f"Sending request to get all positions status for every symbol")
-        else:
-            debug(f"Sending request to get all positions status for symbol: {symbol}")
-
-        debug(f"Request parameters: {params}")
-        debug(f"Request headers: {headers}")
-
-        # Send GET request to the BTSE API to get positions
-        response = throttled_request('GET', url, headers=headers, params=params)
-
-        debug(f"Response status code: {response.status_code}")
-        debug(f"Response body: {response.text}")
-        
-        # Check response status
-        response.raise_for_status()  # Will raise an exception for 4xx or 5xx status codes
-
-        # Parse the response JSON
-        data = response.json()
-
-        # Ensure the response is a list of positions (or empty if none)
-        if not isinstance(data, list) or not data:
-            print_with_date(f"[ERROR] Unexpected response format or empty data: {data}")
-            return []
-
-        # Return the list of all positions
-        return data
-
-    except requests.exceptions.ReadTimeout as e:
-        print_with_date(f"[NETWORK TIMEOUT] Error while checking all position status: {e}")
-        raise
-    except requests.exceptions.RequestException as e:
-        print_with_date(f"[ERROR] Network error while checking all position status: {e}")
-        if hasattr(e, 'response') and e.response is not None:
-            print_with_date(f"[ERROR] Response status code: {e.response.status_code}")
-            print_with_date(f"[ERROR] Response body: {e.response.text}")
-        raise
-    except Exception as e:
-        print_with_date(f"[ERROR] Fetching positions failed: {e}")
-        raise
-
-# === Get Position Status by ID ===
-def get_position_status(position_id):
-    try:
-        # Get all positions first
-        positions = get_positions_status()
-        debug(f"Checking positions for position_id: {position_id}")
-        debug(f"All positions: {positions}")
-
-        # Find the position with the matching position_id
-        for position in positions:
-            if position.get('positionId') == position_id:
-                debug(f"Found position with position_id: {position_id}")
-                return position
-
-        print_with_date(f"[ERROR] Position with position_id: {position_id} not found.")
-        return None
-
-    except requests.exceptions.ReadTimeout as e:
-        print_with_date(f"[NETWORK TIMEOUT] While checking position_id {position_id}: {e}")
-        return "_network_error_"
-    except Exception as e:
-        print_with_date(f"[ERROR] Unexpected error while checking position status for position_id {position_id}: {e}")
-        return "_unexpected_error_"
-
-# === Get Trade by closing Order ID ===
-def get_trade_by_closing_order_id(symbol, order_id):
-    try:
-        url_path = '/api/v2.2/user/trade_history'
-        url = BASE_URL + url_path
-        nonce = str(int(time.time() * 1000))
-        sig = generate_signature(API_SECRET, url_path, nonce, "")
-        headers = {
-            'request-api': API_KEY,
-            'request-nonce': nonce,
-            'request-sign': sig,
-            'Content-Type': 'application/json'
-        }
-        params = {
-            'symbol': symbol,
-            'clOrderID': order_id,
-            'includeOld': 'true'
-        }
-        response = throttled_request("GET", url, headers=headers, params=params)
-        response.raise_for_status()
-        data = response.json()
-        debug(f"closing orderID: {order_id}")
-        debug(f"Data from trade_history: {data}")
-        return data[0] if data else None
-    except Exception as e:
-        print_with_date(f"[ERROR] Trade lookup failed for closing order_id {order_id}: {e}")
-        return None
-
-# === Get Trade by opening Order ID ===
-def get_trade_by_opening_order_id(symbol, order_id):
-    try:
-        url_path = '/api/v2.2/user/trade_history'
-        url = BASE_URL + url_path
-        nonce = str(int(time.time() * 1000))
-        sig = generate_signature(API_SECRET, url_path, nonce, "")
-        headers = {
-            'request-api': API_KEY,
-            'request-nonce': nonce,
-            'request-sign': sig,
-            'Content-Type': 'application/json'
-        }
-        params = {
-            'symbol': symbol,
-            'orderID': order_id,
-            'includeOld': 'true'
-        }
-        response = throttled_request("GET", url, headers=headers, params=params)
-        response.raise_for_status()
-        data = response.json()
-        debug(f"opening orderID: {order_id}")
-        debug(f"Data from trade_history: {data}")
-        return data[0] if data else None
-    except Exception as e:
-        print_with_date(f"[ERROR] Trade lookup failed for opening order_id {order_id}: {e}")
-        return None
-
-# === Win Check ===
-def is_win_from_trade(realized_pnl):
-    try:
-        return float(realized_pnl) > 0
-    except:
-        return False
-
-def is_breakeven_from_trade(symbol, info, closing_price):
-    opening_price = info["opening_price"]
-    trail_value = info["trail_value"]
-    breakeven_percentage = 10
-
-    current_price = get_current_price(symbol)
-    if not current_price:
-        print_with_date("[ERROR] Failed to get current price.")
-        raise PriceFetchError("[ERROR] Failed to get current price for breakeven check.")
-
-    try:
-        trail_value = Decimal(str(trail_value))
-        opening_price = Decimal(str(opening_price))
-        closing_price = Decimal(str(closing_price))
-        breakeven_percentage = Decimal(str(breakeven_percentage))
-        one_percent = Decimal(str(0.01))
-        
-        return abs(closing_price-opening_price) < (breakeven_percentage * one_percent * trail_value)
-    except Exception as e:
-        print_with_date(f"[ERROR] Exception during breakeven check: {e}")
-        return False
-
 # === Store Positions ===
-positions = {}
-
-# === Place All Positions ===
-def place_all_positions(symbol, sides=("LONG", "SHORT")):
-    global CONTRACTS_MAP
-    print_with_date(f"[STARTING NEW {symbol} CYCLE]")
-    positions[symbol].clear()
-    clear_positions(symbol)
-    trend_type = classify_trend_or_range(symbol)
-
-    if trend_type == "trend":
-        place_trend_positions(symbol, sides)
-    elif trend_type == "range":
-        place_range_positions(symbol, sides, entry_offset_pct=RANGE_ENTRY_OFFSET_PCT, take_profit_pct=RANGE_TAKE_PROFIT_PCT, stop_loss_pct=RANGE_STOP_LOSS_PCT)
-    else:
-        print_with_date(f"[SKIP] Could not classify trend/range for {symbol}")
-
-def place_trend_positions(symbol, sides):
-    for i, callback in enumerate(TRAILING_STOPS_MAP[symbol]):
-        #for side in ["LONG"]:
-        for side in sides:
-            pid = f"{side.lower()}-{i}"
-            contracts = CONTRACTS_MAP.get(symbol, 1)
-            result = place_trailing_stop(symbol, side, callback, contracts)
-            # Check if the result is valid (i.e., position_id and opening_order_id and closing_order_id are returned)
-            if result is None or result[0] is None or result[1] is None or result[2] is None:
-                print_with_date(f"[ERROR] Failed to place trailing stop for {symbol} {side} at {callback}%")
-                continue
-            pos_id, opening_order_id, closing_order_id, opening_price, trail_value = result
-            positions[symbol][pid] = {
-                "position_id": pos_id,
-                "opening_order_id": opening_order_id,
-                "closing_order_id": closing_order_id,
-                "side": side,
-                "callback": callback,
-                "active": True,
-                "opening_price" : opening_price,
-                "trail_value" : trail_value,
-                "opened_at": time.time()
-            }
-            position_info = positions[symbol][pid]
-            update_position(pid, position_info, symbol)
-
-def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
-                          entry_offset_pct=0.5, take_profit_pct=0.7, stop_loss_pct=0.5):
-    """
-    Place range-trading orders: enter near support/resistance with tight SL/TP.
-    """
-
-    df = fetch_4h_ohlcv(symbol)
-    if df is None or df.empty or len(df) < lookback:
-        print_with_date(f"[RANGE STRATEGY] Insufficient data for {symbol}")
-        return
-
-    recent = df.tail(lookback)
-    high = recent['high'].max()
-    low = recent['low'].min()
-    range_mid = (high + low) / 2
-
-    contracts = CONTRACTS_MAP.get(symbol, 1)
-
-    price = get_current_price(symbol)
-    if price is None:
-        print_with_date(f"[RANGE STRATEGY] Failed to fetch price for {symbol}")
-        return
-
-    for i, side in enumerate(sides):
-        if side == "LONG":
-            entry_price = range_mid * (1 - entry_offset_pct / 100)
-            take_profit = entry_price * (1 + take_profit_pct / 100)
-            stop_loss = entry_price * (1 - stop_loss_pct / 100)
-            order_side = "BUY"
-        elif side == "SHORT":
-            entry_price = range_mid * (1 + entry_offset_pct / 100)
-            take_profit = entry_price * (1 - take_profit_pct / 100)
-            stop_loss = entry_price * (1 + stop_loss_pct / 100)
-            order_side = "SELL"
-        else:
-            continue
-
-        # Ensure price decimal scale is the right one
-        entry_price = round(entry_price, int(-math.log10(MIN_PRICE_INCREMENTS[symbol])))
-        take_profit = round(take_profit, int(-math.log10(MIN_PRICE_INCREMENTS[symbol])))
-        stop_loss = round(stop_loss, int(-math.log10(MIN_PRICE_INCREMENTS[symbol])))
-
-        cl_order_id = f"{symbol}-range-{side.lower()}-{i}-{int(time.time())}"
-
-        print_with_date(
-            f"[RANGE STRATEGY] {symbol} {side} | Entry: {entry_price:.4f}, "
-            f"TP: {take_profit:.4f}, SL: {stop_loss:.4f}, Qty: {contracts}"
-        )
-
-        # You may need to customize this to your real API structure:
-        result = place_range_order(symbol=symbol,
-                          position_side=order_side,
-                          contracts=contracts,
-                          entry_price=entry_price,
-                          take_profit=take_profit,
-                          stop_loss=stop_loss,
-                          cl_order_id=cl_order_id)
-
-        if result is None or result[0] is None:
-            print_with_date(f"[ERROR] Failed to place range order for {symbol} {side}")
-            continue
-
-        # Optionally track position:
-        pid = f"range-{side.lower()}-{i}"
-        positions[symbol][pid] = {
-            "position_id": cl_order_id,
-            "opening_order_id": cl_order_id,
-            "closing_order_id": None,
-            "side": side,
-            "callback": None,
-            "active": True,
-            "opening_price": entry_price,
-            "trail_value": None,
-            "opened_at": time.time()
-        }
-        update_position(pid, positions[symbol][pid], symbol)
-
-# === Check and Manage Positions ===
-def check_positions(symbol):
-    global CONTRACTS_MAP
-    all_closed = True
-    for pid, info in positions[symbol].items():
-        debug(f"[check_positions] Checking... {symbol} {pid}")
-        if not info["active"]:
-            continue
-
-        opened_at = info.get("opened_at")
-        if opened_at:
-            elapsed_minutes = (time.time() - opened_at) / 60
-            if elapsed_minutes >= TRADE_MAX_CANDLES * CANDLE_INTERVAL_MINUTES:
-                print_with_date(f"[TIMEOUT] Closing {symbol} {pid} after {elapsed_minutes:.1f} minutes.")
-                # Code to close the position immediately:
-                close_position(symbol, info)  # You'll need to implement or call your existing close logic
-                info["active"] = False
-                update_position(pid, info, symbol)
-                continue
-
-        position_data = get_position_status(info["position_id"])
-
-        if position_data == "_network_error_":
-            print_with_date(f"[SKIPPING] {symbol} {pid} due to network timeout. Will retry later.")
-            all_closed = False
-            return all_closed
-
-        if position_data == "_unexpected_error_":
-            print_with_date(f"[SKIPPING] {symbol} {pid} due to unexpected error. Will retry later.")
-            all_closed = False
-            return all_closed
-
-        if not position_data:
-            print_with_date(f"[CLOSED?] {symbol} {pid} position_id not found. Checking trade history...")
-
-            # Closing trade check
-            time.sleep(1)
-            trade = get_trade_by_closing_order_id(symbol, info["closing_order_id"])
-
-            if not trade:
-                print_with_date(f"[ERROR] No closing trade found for order_id {info['closing_order_id']}")
-                info["active"] = False
-                update_position(pid, info, symbol)
-                continue
-            pnl1 = Decimal(str(trade.get("total")))
-
-            # Opening trade check
-            time.sleep(1)
-            trade = get_trade_by_opening_order_id(symbol, info["opening_order_id"])
-            if not trade:
-                print_with_date(f"[ERROR] No opening trade found for order_id {info['opening_order_id']}")
-                continue
-            pnl2 = Decimal(str(trade.get("total")))
-            closing_price = Decimal(str(trade.get("price")))
-
-            pnl = pnl1 + pnl2
-
-            debug(f"[CLOSED/TRADE] {symbol} {pid} | Realized PnL1: {pnl1:.8f}")
-            debug(f"[CLOSED/TRADE] {symbol} {pid} | Realized PnL2: {pnl2:.8f}")
-            print_with_date(f"[CLOSED/TRADE] {symbol} {pid} | Realized PnL: {pnl:.8f}")
-            info["active"] = False
-            update_position(pid, info, symbol)
-
-            if is_win_from_trade(pnl):
-                if REOPEN_ON_WIN:
-                    print_with_date(f"[WIN] Reopening {symbol} {pid}")
-                    global CONTRACTS_MAP
-                    contracts = CONTRACTS_MAP.get(symbol, 1)
-                    new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
-                    if new_pos_id and new_closing_order_id:
-                        positions[symbol][pid] = {
-                            "position_id": new_pos_id,
-                            "opening_order_id": new_opening_order_id,
-                            "closing_order_id": new_closing_order_id,
-                            "side": info["side"],
-                            "callback": info["callback"],
-                            "active": True,
-                            "opening_price" : opening_price,
-                            "trail_value" : trail_value
-                        }
-                        position_info = positions[symbol][pid]
-                        update_position(pid, position_info, symbol)
-                        all_closed = False
-                        continue
-                else:
-                    print_with_date(f"[WIN] Not reopening {symbol} {pid} (REOPEN_ON_WIN=False)")
-                    continue
-            elif pnl is not None and is_breakeven_from_trade(symbol, info, closing_price):
-                if REOPEN_ON_BREAKEVEN:
-                    print_with_date(f"[BREAKEVEN] Reopening {symbol} {pid}")
-                    contracts = CONTRACTS_MAP.get(symbol, 1)
-                    new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
-                    if new_pos_id and new_closing_order_id:
-                        positions[symbol][pid] = {
-                            "position_id": new_pos_id,
-                            "opening_order_id": new_opening_order_id,
-                            "closing_order_id": new_closing_order_id,
-                            "side": info["side"],
-                            "callback": info["callback"],
-                            "active": True,
-                            "opening_price" : opening_price,
-                            "trail_value" : trail_value
-                        }
-                        position_info = positions[symbol][pid]
-                        update_position(pid, position_info, symbol)
-                        all_closed = False
-                        continue
-                    else:
-                        print_with_date(f"[BREAKEVEN] Not reopening {symbol} {pid} (REOPEN_ON_BREAKEVEN=False)")
-                        continue
-            else:
-                print_with_date(f"[LOSS] Not reopening {symbol} {pid}")
-            continue
-        size = float(position_data.get("size", 0))
-        debug(f"{pid} | size={size}")
-        if size > 0:
-            all_closed = False
-            continue
-        else:
-            print_with_date(f"[CLOSED] {symbol} {pid} position is now closed.")
-            info["active"] = False
-            update_position(pid, info, symbol)
-            trade = get_trade_by_closing_order_id(symbol, info["closing_order_id"])
-            pnl = trade.get("total") if trade else None
-            if pnl is not None and is_win_from_trade(pnl):
-                if REOPEN_ON_WIN:
-                    print_with_date(f"[WIN] Reopening {symbol} {pid}")
-                    contracts = CONTRACTS_MAP.get(symbol, 1)
-                    new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
-                    if new_pos_id and new_closing_order_id:
-                        positions[symbol][pid] = {
-                            "position_id": new_pos_id,
-                            "opening_order_id": new_opening_order_id,
-                            "closing_order_id": new_closing_order_id,
-                            "side": info["side"],
-                            "callback": info["callback"],
-                            "active": True,
-                            "opening_price" : opening_price,
-                            "trail_value" : trail_value
-                        }
-                        position_info = positions[symbol][pid]
-                        update_position(pid, position_info, symbol)
-                        all_closed = False
-                        continue
-                else:
-                    print_with_date(f"[WIN] Not reopening {symbol} {pid} (REOPEN_ON_WIN=False)")
-                    continue
-            elif pnl is not None and is_breakeven_from_trade(symbol, info, closing_price):
-                if REOPEN_ON_BREAKEVEN:
-                    print_with_date(f"[BREAKEVEN] Reopening {symbol} {pid}")
-                    contracts = CONTRACTS_MAP.get(symbol, 1)
-                    new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
-                    if new_pos_id and new_closing_order_id:
-                        positions[symbol][pid] = {
-                            "position_id": new_pos_id,
-                            "opening_order_id": new_opening_order_id,
-                            "closing_order_id": new_closing_order_id,
-                            "side": info["side"],
-                            "callback": info["callback"],
-                            "active": True,
-                            "opening_price" : opening_price,
-                            "trail_value" : trail_value
-                        }
-                        position_info = positions[symbol][pid]
-                        update_position(pid, position_info, symbol)
-                        all_closed = False
-                        continue
-                else:
-                    print_with_date(f"[BREAKEVEN] Not reopening {symbol} {pid} (REOPEN_ON_BREAKEVEN=False)")
-                    continue
-            else:
-                print_with_date(f"[LOSS] Not reopening {symbol} {pid}")
-    return all_closed
+state.positions = {}
 
 def start_new_cycle(resume=False):
-    global positions
     if resume:
-        active_symbols = get_active_symbols_from_db()
+        active_symbols = positionsdb.get_active_symbols()
         symbols = list(active_symbols.keys())
         long_symbols = [s for s, sides in active_symbols.items() if "LONG" in sides]
         short_symbols = [s for s, sides in active_symbols.items() if "SHORT" in sides]
@@ -1947,10 +207,10 @@ def start_new_cycle(resume=False):
         print_with_date(f"[RESUME] Resuming cycle with SHORT symbols: {short_symbols}")
     else:
         # 1️⃣ Init DB
-        init_known_symbols_db()
+        knownsymbolsdb.init()
 
         # 2️⃣ Fetch market summary from BTSE
-        market_summary = get_market_summary()
+        market_summary = exchange.get_market_summary()
         if market_summary is None:
             return None, None, None
 
@@ -1964,18 +224,18 @@ def start_new_cycle(resume=False):
         setup_symbol_modes()
 
         # 6️⃣ Get only 'ready' symbols for trading
-        base_symbols = get_ready_symbols()
+        base_symbols = knownsymbolsdb.get_ready_symbols()
         # Forget about old trades if we are starting a new cycle
-        positions = {}
+        state.positions = {}
         for symbol in base_symbols:
-            clear_positions(symbol)
+            positionsdb.clear_positions(symbol)
         symbols, long_symbols, short_symbols = filter_symbols_by_rank(
             base_symbols,
             long_top_number=MAXIMUM_LONG_TRADES_NUMBER,
             short_top_number=MAXIMUM_SHORT_TRADES_NUMBER,
             rank_type='EASY6',
-            vol_bottom_percentile = VOL_BOTTOM_PERCENTILE,
-            vol_top_percentile = VOL_TOP_PERCENTILE
+            vol_bottom_percentile = state.VOL_BOTTOM_PERCENTILE,
+            vol_top_percentile = state.VOL_TOP_PERCENTILE
         )
 
         # Handle case where no symbols are selected
@@ -1983,13 +243,12 @@ def start_new_cycle(resume=False):
             print_with_date("[CYCLE] No valid symbols found. Skipping cycle.")
             return None, None, None
 
-    global CONTRACT_SIZES, MIN_PRICE_INCREMENTS, CONTRACTS_MAP
-    CONTRACT_SIZES = fetch_contract_sizes(symbols)
-    MIN_PRICE_INCREMENTS = fetch_min_price_increments(symbols)
-    CONTRACTS_MAP, MAX_EXPECTED_LOSS = compute_contracts_from_prices(symbols, CONTRACT_SIZES)
+    state.CONTRACT_SIZES = exchange.fetch_contract_sizes(symbols)
+    state.MIN_PRICE_INCREMENTS = exchange.fetch_min_price_increments(symbols)
+    state.CONTRACTS_MAP, MAX_EXPECTED_LOSS = compute_contracts_from_prices(symbols, state.CONTRACT_SIZES)
 
-    print_with_date(f"[CONTRACT_SIZES] {CONTRACT_SIZES}")
-    print_with_date(f"[CONTRACTS_MAP] {CONTRACTS_MAP}")
+    print_with_date(f"[CONTRACT_SIZES] {state.CONTRACT_SIZES}")
+    print_with_date(f"[CONTRACTS_MAP] {state.CONTRACTS_MAP}")
 
     if (not resume):
         print_with_date(f"[NEW] New cycle with LONG symbols: {long_symbols}")
@@ -2000,10 +259,10 @@ def start_new_cycle(resume=False):
             print_with_date(f"[CLASSIFY] {symbol} : {trend_type.upper()}")
 
     for symbol in symbols:
-        if symbol not in positions:
-            positions[symbol] = {}
-        load_positions(symbol)
-        if not positions[symbol] and not resume:
+        if symbol not in state.positions:
+            state.positions[symbol] = {}
+        positionsdb.load_positions(symbol)
+        if not state.positions[symbol] and not resume:
             update_trailing_stops_for_symbol(symbol)
             if symbol in long_symbols:
                 place_all_positions(symbol, sides=("LONG",))
@@ -2016,9 +275,9 @@ def start_new_cycle(resume=False):
 
 # === Main Loop ===
 def run_main_loop():
-    init_db()
+    positionsdb.init()
 
-    active_symbols = get_active_symbols_from_db()
+    active_symbols = positionsdb.get_active_symbols()
     resume_cycle = bool(active_symbols)
 
     # Ensure we have valid symbols before entering the main loop
@@ -2030,15 +289,14 @@ def run_main_loop():
             time.sleep(600)
             resume_cycle = False  # ensure it's not treated as resume on next try
 
-    global check_sleep_start
-    check_sleep_start = True
+    state.check_sleep_start = True
 
     while True:
         try:
-            if check_sleep_start:
+            if state.check_sleep_start:
                 print_with_date("", end='')
             print("C", end='', flush=True)
-            check_sleep_start = False
+            state.check_sleep_start = False
             time.sleep(1)
 
             batch_all_closed = True
@@ -2063,7 +321,7 @@ def run_main_loop():
         except Exception as e:
             print_with_date(f"[UNHANDLED EXCEPTION] {e}. Traceback: {traceback.format_exc()} Retrying in 5 minutes.")
         print("S", end='', flush=True)
-        check_sleep_start = False
+        state.check_sleep_start = False
         time.sleep(5 * 60)
 
 if __name__ == "__main__":
