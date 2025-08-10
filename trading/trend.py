@@ -1,0 +1,685 @@
+def classify_trend_or_range_real(symbol, lookback=50, threshold=0.0003):
+    """
+    Classifies symbol as 'trend' or 'range' based on trend strength.
+    Returns: 'trend', 'range', or 'unknown'
+    """
+    try:
+        score = calculate_easy_trend6_with_rsi(symbol, lookback=lookback)
+        if score == 0.0:
+            return "range"
+        elif abs(score) >= threshold:
+            return "trend"
+        else:
+            return "range"
+    except Exception as e:
+        print_with_date(f"[ERROR] Classify failed for {symbol}: {e}")
+        return "unknown"
+
+def classify_trend_or_range(symbol, lookback=50, threshold=0.0003):
+    """
+    Cached wrapper for trend/range classification.
+    """
+    now = time.time()
+
+    if symbol in TRENDRANGE_CACHE:
+        ts, result = TRENDRANGE_CACHE[symbol]
+        if now - ts < TRENDRANGE_CACHE_TIMEOUT:
+            return result
+        else:
+            del TRENDRANGE_CACHE[symbol]
+
+    result = classify_trend_or_range_real(symbol, lookback=lookback, threshold=threshold)
+    TRENDRANGE_CACHE[symbol] = (now, result)
+    return result
+
+def calculate_easy_trend6_with_rsi(symbol, lookback=50, rsi_period=14,
+                                   rsi_low_cutoff=30, rsi_high_cutoff=70,
+                                   window_size=5):
+    """
+    'Easy Trend 6' variant:
+    - Uses overlapping sliding windows with log-return slopes.
+    - 60% majority rule instead of 80%.
+    - Range and RSI filters disabled.
+    """
+
+    df = fetch_4h_ohlcv(symbol)
+    if df is None or df.empty or len(df) < lookback:
+        return 0.0
+
+    # Use ohlc4 values
+    ohlc4 = ((df['open'] + df['high'] + df['low'] + df['close']) / 4.0).astype(float)
+    values = ohlc4.tail(lookback).values
+
+    if len(values) <= 9:
+        log_returns = np.diff(np.log(values))
+        slope_normalized = np.mean(log_returns)
+    else:
+        segment_slopes = []
+
+        for i in range(len(values) - window_size + 1):
+            segment = values[i:i + window_size]
+
+            log_returns = np.diff(np.log(segment))
+            mean_log_ret = np.mean(log_returns)
+            vol_adj_slope = mean_log_ret / (np.std(segment) + 1e-8)
+
+            segment_slopes.append(vol_adj_slope)
+            debug(
+                f"[DEBUG EASY TREND6] {symbol} | Window {i+1}/{len(values)-window_size+1} | "
+                f"MeanLogRet={mean_log_ret:.6f}, VolAdjSlope={vol_adj_slope:.6f}"
+            )
+
+        positive_count = sum(1 for s in segment_slopes if s > 0)
+        negative_count = sum(1 for s in segment_slopes if s < 0)
+        required_count = int(len(segment_slopes) * 0.6)  # ✅ 60% rule
+
+        first_candle = values[0]
+        last_candle = values[-1]
+
+        if positive_count >= required_count and last_candle > first_candle:
+            slope_normalized = np.mean(segment_slopes)
+        elif negative_count >= required_count and last_candle < first_candle:
+            slope_normalized = np.mean(segment_slopes)
+        else:
+            return 0.0
+
+        print_with_date(
+            f"[DEBUG EASY TREND6] {symbol} | (TOTAL) AvgSlope: {slope_normalized:.6f}, "
+            f"First={first_candle:.4f}, Last={last_candle:.4f}, "
+            f"PosCount={positive_count}, NegCount={negative_count}"
+        )
+
+    # ✅ Range filter disabled
+    if False:
+        max_price = np.max(values)
+        min_price = np.min(values)
+        range_pct = (max_price - min_price) / np.mean(values) * 100
+        if range_pct < 0.5:
+            return 0.0
+
+    # ✅ RSI filter disabled
+    if False:
+        delta = np.diff(values)
+        gain = np.where(delta > 0, delta, 0)
+        loss = np.where(delta < 0, -delta, 0)
+        avg_gain = np.mean(gain[-rsi_period:])
+        avg_loss = np.mean(loss[-rsi_period:])
+        rs = avg_gain / avg_loss if avg_loss != 0 else np.inf
+        rsi = 100 - (100 / (1 + rs))
+
+        if rsi < rsi_low_cutoff or rsi > rsi_high_cutoff:
+            return 0.0
+
+    return float(slope_normalized)
+
+def calculate_easy_trend5_with_rsi(symbol, lookback=50, rsi_period=14,
+                                   rsi_low_cutoff=30, rsi_high_cutoff=70,
+                                   window_size=5):
+    """
+    'Easy Trend 5' using overlapping sliding windows with log-return slopes.
+    Uses ohlc4 and weights consistency of slopes to determine trend.
+    """
+
+    df = fetch_4h_ohlcv(symbol)
+    if df is None or df.empty or len(df) < lookback:
+        return 0.0
+
+    # Use ohlc4 values
+    ohlc4 = ((df['open'] + df['high'] + df['low'] + df['close']) / 4.0).astype(float)
+    values = ohlc4.tail(lookback).values
+
+    if len(values) <= 9:
+        # For short lookbacks: average log returns over whole period
+        log_returns = np.diff(np.log(values))
+        slope_normalized = np.mean(log_returns)
+    else:
+        segment_slopes = []
+
+        # ✅ Overlapping sliding windows of size `window_size`
+        for i in range(len(values) - window_size + 1):
+            segment = values[i:i + window_size]
+
+            # Log-return slope for this window
+            log_returns = np.diff(np.log(segment))
+            mean_log_ret = np.mean(log_returns)
+            vol_adj_slope = mean_log_ret / (np.std(segment) + 1e-8)
+
+            segment_slopes.append(vol_adj_slope)
+            debug(
+                f"[DEBUG EASY TREND5] {symbol} | Window {i+1}/{len(values)-window_size+1} | "
+                f"MeanLogRet={mean_log_ret:.6f}, VolAdjSlope={vol_adj_slope:.6f}"
+            )
+
+        # ✅ Check consistency of slopes (80% majority rule)
+        positive_count = sum(1 for s in segment_slopes if s > 0)
+        negative_count = sum(1 for s in segment_slopes if s < 0)
+        required_count = int(len(segment_slopes) * 0.8)
+
+        first_candle = values[0]
+        last_candle = values[-1]
+
+        if positive_count >= required_count and last_candle > first_candle:
+            slope_normalized = np.mean(segment_slopes)
+        elif negative_count >= required_count and last_candle < first_candle:
+            slope_normalized = np.mean(segment_slopes)
+        else:
+            return 0.0
+
+        print_with_date(
+            f"[DEBUG EASY TREND5] {symbol} | (TOTAL) AvgSlope: {slope_normalized:.6f}, "
+            f"First={first_candle:.4f}, Last={last_candle:.4f}, "
+            f"PosCount={positive_count}, NegCount={negative_count}"
+        )
+
+    # Range filter
+    max_price = np.max(values)
+    min_price = np.min(values)
+    range_pct = (max_price - min_price) / np.mean(values) * 100
+    if range_pct < 0.5:
+        return 0.0
+
+    # RSI on ohlc4
+    delta = np.diff(values)
+    gain = np.where(delta > 0, delta, 0)
+    loss = np.where(delta < 0, -delta, 0)
+    avg_gain = np.mean(gain[-rsi_period:])
+    avg_loss = np.mean(loss[-rsi_period:])
+    rs = avg_gain / avg_loss if avg_loss != 0 else np.inf
+    rsi = 100 - (100 / (1 + rs))
+
+    if rsi < rsi_low_cutoff or rsi > rsi_high_cutoff:
+        return 0.0
+
+    return float(slope_normalized)
+
+def calculate_easy_trend4_with_rsi(symbol, lookback=50, rsi_period=14,
+                                   rsi_low_cutoff=30, rsi_high_cutoff=70):
+    """
+    Calculate 'easy trend 4' score using RSI filter.
+    Uses ohlc4 and log-return based slopes per segment with volatility normalization.
+    """
+
+    df = fetch_4h_ohlcv(symbol)
+    if df is None or df.empty or len(df) < lookback:
+        return 0.0
+
+    # Use ohlc4 as smoothed price input
+    ohlc4 = ((df['open'] + df['high'] + df['low'] + df['close']) / 4.0).astype(float)
+    values = ohlc4.tail(lookback).values
+
+    if len(values) <= 9:
+        # For very short lookback, use mean log return as overall slope
+        log_returns = np.diff(np.log(values))
+        slope_normalized = np.mean(log_returns)
+    else:
+        segment_size = 5
+        num_segments = len(values) // segment_size
+        values = values[-num_segments * segment_size:]
+
+        segment_slopes = []
+        for i in range(num_segments):
+            segment = values[i * segment_size:(i + 1) * segment_size]
+
+            # ✅ Use log returns for slope
+            log_returns = np.diff(np.log(segment))
+            mean_log_ret = np.mean(log_returns)
+
+            # Volatility adjustment: divide by stdev of segment prices
+            vol_adj_slope = mean_log_ret / (np.std(segment) + 1e-8)
+
+            debug(
+                f"[DEBUG EASY TREND4] {symbol} | Segment {i+1}/{num_segments} | "
+                f"MeanLogRet={mean_log_ret:.6f}, VolAdjSlope={vol_adj_slope:.6f}"
+            )
+
+            segment_slopes.append(vol_adj_slope)
+
+        positive_count = sum(1 for s in segment_slopes if s > 0)
+        negative_count = sum(1 for s in segment_slopes if s < 0)
+        required_count = int(len(segment_slopes) * 0.8)
+
+        first_candle = values[0]
+        last_candle = values[-1]
+
+        if positive_count >= required_count and last_candle > first_candle:
+            slope_normalized = sum(segment_slopes)
+        elif negative_count >= required_count and last_candle < first_candle:
+            slope_normalized = sum(segment_slopes)
+        else:
+            return 0.0
+
+        print_with_date(
+            f"[DEBUG EASY TREND4] {symbol} | (TOTAL) SlopeNormalized: {slope_normalized}, "
+            f"First={first_candle:.4f}, Last={last_candle:.4f}"
+        )
+
+    # Range filter
+    max_price = np.max(values)
+    min_price = np.min(values)
+    range_pct = (max_price - min_price) / np.mean(values) * 100
+    if range_pct < 0.5:
+        return 0.0
+
+    # RSI using ohlc4
+    delta = np.diff(values)
+    gain = np.where(delta > 0, delta, 0)
+    loss = np.where(delta < 0, -delta, 0)
+    avg_gain = np.mean(gain[-rsi_period:])
+    avg_loss = np.mean(loss[-rsi_period:])
+    rs = avg_gain / avg_loss if avg_loss != 0 else np.inf
+    rsi = 100 - (100 / (1 + rs))
+
+    if rsi < rsi_low_cutoff or rsi > rsi_high_cutoff:
+        return 0.0
+
+    return float(slope_normalized)
+
+def calculate_easy_trend3_with_rsi(symbol, lookback=50, rsi_period=14,
+                                   rsi_low_cutoff=30, rsi_high_cutoff=70):
+    """
+    Calculate an 'easy trend 3' score using RSI filter.
+    Uses ohlc4 and requires overall price movement to match trend direction:
+    - Uptrend: last candle > first candle
+    - Downtrend: last candle < first candle
+    """
+
+    df = fetch_4h_ohlcv(symbol)
+    if df is None or df.empty or len(df) < lookback:
+        return 0.0
+
+    ohlc4 = ((df['open'] + df['high'] + df['low'] + df['close']) / 4.0).astype(float)
+    values = ohlc4.tail(lookback).values
+
+    if len(values) <= 9:
+        x = np.arange(len(values))
+        slope, _ = np.polyfit(x, values, 1)
+        slope_normalized = slope / np.mean(values)
+    else:
+        segment_size = 5
+        num_segments = len(values) // segment_size
+        values = values[-num_segments * segment_size:]
+
+        segment_slopes = []
+        for i in range(num_segments):
+            segment = values[i * segment_size:(i + 1) * segment_size]
+            start_price = segment[0]
+            end_price = segment[-1]
+            mean_price = np.mean(segment)
+            raw_slope = end_price - start_price
+            normalized_slope = raw_slope / mean_price
+
+            debug(
+                f"[DEBUG EASY TREND3] {symbol} | Segment {i+1}/{num_segments} | "
+                f"Start={start_price:.4f}, End={end_price:.4f}, "
+                f"RawSlope={raw_slope:.6f}, NormSlope={normalized_slope:.6f}"
+            )
+
+            segment_slopes.append(normalized_slope)
+
+        positive_count = sum(1 for s in segment_slopes if s > 0)
+        negative_count = sum(1 for s in segment_slopes if s < 0)
+        required_count = int(len(segment_slopes) * 0.8)
+
+        first_candle = values[0]
+        last_candle = values[-1]
+
+        # ✅ Positive logic: accept only when both the slope count AND price movement match
+        if positive_count >= required_count and last_candle > first_candle:
+            slope_normalized = sum(segment_slopes)
+        elif negative_count >= required_count and last_candle < first_candle:
+            slope_normalized = sum(segment_slopes)
+        else:
+            return 0.0
+
+        print_with_date(
+            f"[DEBUG EASY TREND3] {symbol} | (TOTAL) SlopeNormalized: {slope_normalized}, "
+            f"First={first_candle:.4f}, Last={last_candle:.4f}"
+        )
+
+    max_price = np.max(values)
+    min_price = np.min(values)
+    range_pct = (max_price - min_price) / np.mean(values) * 100
+    if range_pct < 0.5:
+        return 0.0
+
+    delta = np.diff(values)
+    gain = np.where(delta > 0, delta, 0)
+    loss = np.where(delta < 0, -delta, 0)
+    avg_gain = np.mean(gain[-rsi_period:])
+    avg_loss = np.mean(loss[-rsi_period:])
+    rs = avg_gain / avg_loss if avg_loss != 0 else np.inf
+    rsi = 100 - (100 / (1 + rs))
+
+    if rsi < rsi_low_cutoff or rsi > rsi_high_cutoff:
+        return 0.0
+
+    return float(slope_normalized)
+
+def calculate_easy_trend2_with_rsi(symbol, lookback=50, rsi_period=14,
+                                   rsi_low_cutoff=30, rsi_high_cutoff=70):
+    """
+    Calculate an 'easy trend 2' score using RSI filter.
+    Uses ohlc4 (average of open, high, low, close) instead of close values.
+    For >=10 candles, slope is based on start/end ohlc4 per segment and normalized.
+    """
+
+    df = fetch_4h_ohlcv(symbol)
+    if df is None or df.empty or len(df) < lookback:
+        return 0.0
+
+    # Compute ohlc4
+    ohlc4 = ((df['open'] + df['high'] + df['low'] + df['close']) / 4.0).astype(float)
+    values = ohlc4.tail(lookback).values
+
+    # For <=9 candles, same as trendest but on ohlc4
+    if len(values) <= 9:
+        x = np.arange(len(values))
+        slope, _ = np.polyfit(x, values, 1)
+        slope_normalized = slope / np.mean(values)
+    else:
+        segment_size = 5
+        num_segments = len(values) // segment_size
+        values = values[-num_segments * segment_size:]  # trim to multiple of 5
+
+        segment_slopes = []
+        for i in range(num_segments):
+            segment = values[i * segment_size:(i + 1) * segment_size]
+            start_price = segment[0]
+            end_price = segment[-1]
+            mean_price = np.mean(segment)
+            raw_slope = end_price - start_price
+            normalized_slope = raw_slope / mean_price
+
+            # Debug print for each segment
+            debug(
+                f"[DEBUG EASY TREND2] {symbol} | Segment {i+1}/{num_segments} | "
+                f"Start={start_price:.4f}, End={end_price:.4f}, "
+                f"RawSlope={raw_slope:.6f}, NormSlope={normalized_slope:.6f}"
+            )
+
+            segment_slopes.append(normalized_slope)
+
+        # Require at least 80% of segment slopes to be positive or negative
+        positive_count = sum(1 for s in segment_slopes if s > 0)
+        negative_count = sum(1 for s in segment_slopes if s < 0)
+        required_count = int(len(segment_slopes) * 0.8)
+
+        if positive_count >= required_count:
+            # Mostly uptrend
+            pass
+        elif negative_count >= required_count:
+            # Mostly downtrend
+            pass
+        else:
+            return 0.0
+
+        slope_normalized = sum(segment_slopes)
+        print_with_date(
+            f"[DEBUG EASY TREND2] {symbol} | (TOTAL) SlopeNormalized: {slope_normalized}"
+        )
+
+    # Range filter: avoid range-bound symbols
+    max_price = np.max(values)
+    min_price = np.min(values)
+    range_pct = (max_price - min_price) / np.mean(values) * 100
+    if range_pct < 0.5:
+        return 0.0
+
+    # Compute RSI on ohlc4
+    delta = np.diff(values)
+    gain = np.where(delta > 0, delta, 0)
+    loss = np.where(delta < 0, -delta, 0)
+    avg_gain = np.mean(gain[-rsi_period:])
+    avg_loss = np.mean(loss[-rsi_period:])
+    rs = avg_gain / avg_loss if avg_loss != 0 else np.inf
+    rsi = 100 - (100 / (1 + rs))
+
+    if rsi < rsi_low_cutoff or rsi > rsi_high_cutoff:
+        return 0.0
+
+    return float(slope_normalized)
+
+def calculate_easy_trend_with_rsi(symbol, lookback=50, rsi_period=14,
+                                  rsi_low_cutoff=30, rsi_high_cutoff=70):
+    """
+    Calculate an 'easy trend' score using RSI filter.
+    For >=10 candles, slope is based on start/end closes per segment and normalized.
+    """
+
+    df = fetch_4h_ohlcv(symbol)
+    if df is None or df.empty or len(df) < lookback:
+        return 0.0
+
+    closes = df['close'].astype(float).tail(lookback).values
+
+    # For <=9 candles, same as the trendest version
+    if len(closes) <= 9:
+        x = np.arange(len(closes))
+        slope, _ = np.polyfit(x, closes, 1)
+        slope_normalized = slope / np.mean(closes)
+    else:
+        # Divide into 5-candle segments
+        segment_size = 5
+        num_segments = len(closes) // segment_size
+        closes = closes[-num_segments * segment_size:]  # trim to multiple of 5
+
+        segment_slopes = []
+        for i in range(num_segments):
+            segment = closes[i * segment_size:(i + 1) * segment_size]
+            start_price = segment[0]
+            end_price = segment[-1]
+            mean_price = np.mean(segment)
+            raw_slope = end_price - start_price
+            normalized_slope = raw_slope / mean_price
+
+            # Debug print for each segment
+            debug(
+                f"[DEBUG EASY TREND] {symbol} | Segment {i+1}/{num_segments} | "
+                f"Start={start_price:.4f}, End={end_price:.4f}, "
+                f"RawSlope={raw_slope:.6f}, NormSlope={normalized_slope:.6f}"
+            )
+
+            segment_slopes.append(normalized_slope)
+
+        # Require at least 80% of segment slopes to be positive or negative
+        positive_count = sum(1 for s in segment_slopes if s > 0)
+        negative_count = sum(1 for s in segment_slopes if s < 0)
+        required_count = int(len(segment_slopes) * 0.8)
+
+        if positive_count >= required_count:
+            # Mostly uptrend
+            pass
+        elif negative_count >= required_count:
+            # Mostly downtrend
+            pass
+        else:
+            # Mixed trend, discard
+            return 0.0
+
+        slope_normalized = sum(segment_slopes)
+        # Debug print for each segment
+        print_with_date(
+            f"[DEBUG EASY TREND] {symbol} | (TOTAL) SlopeNormalized: {slope_normalized}"
+        )
+
+    # Range filter: avoid range-bound symbols
+    max_price = np.max(closes)
+    min_price = np.min(closes)
+    range_pct = (max_price - min_price) / np.mean(closes) * 100
+    if range_pct < 0.5:
+        return 0.0
+
+    # Compute RSI
+    delta = np.diff(closes)
+    gain = np.where(delta > 0, delta, 0)
+    loss = np.where(delta < 0, -delta, 0)
+    avg_gain = np.mean(gain[-rsi_period:])
+    avg_loss = np.mean(loss[-rsi_period:])
+    rs = avg_gain / avg_loss if avg_loss != 0 else np.inf
+    rsi = 100 - (100 / (1 + rs))
+
+    # Apply RSI cutoffs
+    if rsi < rsi_low_cutoff or rsi > rsi_high_cutoff:
+        return 0.0
+
+    return float(slope_normalized)
+
+def calculate_trendest_with_rsi(symbol, lookback=50, rsi_period=14,
+                                rsi_low_cutoff=30, rsi_high_cutoff=70):
+    """
+    Calculate a 'trendest' score with RSI filter.
+    Requires all segments to have the same slope direction.
+    """
+
+    df = fetch_4h_ohlcv(symbol)
+    if df is None or df.empty or len(df) < lookback:
+        return 0.0
+
+    closes = df['close'].astype(float).tail(lookback).values
+
+    # Handle short lookbacks as the old version
+    if len(closes) <= 9:
+        x = np.arange(len(closes))
+        slope, _ = np.polyfit(x, closes, 1)
+        slope_normalized = slope / np.mean(closes)
+    else:
+        # Divide into 5-candle segments
+        segment_size = 5
+        num_segments = len(closes) // segment_size
+        closes = closes[-num_segments * segment_size:]  # trim to multiple of 5
+
+        segment_slopes = []
+        for i in range(num_segments):
+            segment = closes[i * segment_size:(i + 1) * segment_size]
+            x = np.arange(len(segment))
+            seg_slope, _ = np.polyfit(x, segment, 1)
+            segment_slopes.append(seg_slope / np.mean(segment))
+
+        # Check if all slopes have the same sign
+        all_positive = all(s > 0 for s in segment_slopes)
+        all_negative = all(s < 0 for s in segment_slopes)
+        if not (all_positive or all_negative):
+            return 0.0
+
+        # Slope is sum of segment slopes
+        slope_normalized = sum(segment_slopes)
+
+    # Range filter: avoid range-bound symbols
+    max_price = np.max(closes)
+    min_price = np.min(closes)
+    range_pct = (max_price - min_price) / np.mean(closes) * 100
+    if range_pct < 0.5:
+        return 0.0
+
+    # Compute RSI
+    delta = np.diff(closes)
+    gain = np.where(delta > 0, delta, 0)
+    loss = np.where(delta < 0, -delta, 0)
+    avg_gain = np.mean(gain[-rsi_period:])
+    avg_loss = np.mean(loss[-rsi_period:])
+    rs = avg_gain / avg_loss if avg_loss != 0 else np.inf
+    rsi = 100 - (100 / (1 + rs))
+
+    # Apply RSI cutoffs
+    if rsi < rsi_low_cutoff or rsi > rsi_high_cutoff:
+        return 0.0
+
+    return float(slope_normalized)
+
+def calculate_trend_with_rsi(symbol, lookback=50, rsi_period=14, rsi_low_percentile=10, rsi_high_percentile=90):
+    """
+    Calculate a trend score for a symbol based on slope and RSI filter.
+    Returns a positive or negative value, or 0 for range-bound symbols.
+    """
+
+    # Fetch candles using the cached function
+    df = fetch_4h_ohlcv(symbol)
+    if df is None or df.empty or len(df) < lookback:
+        return 0.0
+
+    closes = df['close'].astype(float).tail(lookback).values
+
+    # 1️ - Compute slope using linear regression
+    x = np.arange(len(closes))
+    slope, _ = np.polyfit(x, closes, 1)
+
+    # Normalize slope by price to make it relative
+    slope_normalized = slope / np.mean(closes)
+
+    # 2️ - Range filter: if max-min is small, consider it range-bound
+    max_price = np.max(closes)
+    min_price = np.min(closes)
+    range_pct = (max_price - min_price) / np.mean(closes) * 100
+    if range_pct < 0.5:  # threshold can be tuned
+        return 0.0
+
+    # 3️ - Compute RSI
+    delta = np.diff(closes)
+    gain = np.where(delta > 0, delta, 0)
+    loss = np.where(delta < 0, -delta, 0)
+    avg_gain = np.mean(gain[-rsi_period:])
+    avg_loss = np.mean(loss[-rsi_period:])
+    rs = avg_gain / avg_loss if avg_loss != 0 else np.inf
+    rsi = 100 - (100 / (1 + rs))
+
+    # 4️ - Apply RSI percentile filter
+    if rsi < rsi_low_percentile or rsi > rsi_high_percentile:
+        return 0.0
+
+    return float(slope_normalized)
+
+def calculate_ema_trend_score(symbol, lookback=50):
+    df = fetch_4h_ohlcv(symbol)  # currently returns 5m candles
+    if df is None or len(df) < lookback:
+        return 0
+
+    df['ema'] = df['close'].ewm(span=lookback, adjust=False).mean()
+    # Slope = difference between last EMA and EMA N bars ago
+    slope = df['ema'].iloc[-1] - df['ema'].iloc[-lookback]
+    return slope
+
+def calculate_atr(df, period=14, ma='SMA', ma_period=48):
+    """
+    Calculate the Average True Range (ATR) using specified moving average method.
+
+    Args:
+        df (pd.DataFrame): DataFrame containing 'high', 'low', and 'close' columns.
+        period (int): The period for True Range calculation (typically 14).
+        ma (str): Type of moving average - 'SMA', 'EMA', 'RMA', or 'Highest'.
+        ma_period (int): The period for the moving average (default is same as `period`).
+
+    Returns:
+        float: The latest ATR value.
+    """
+    if ma_period is None:
+        ma_period = period
+
+    df['H-L'] = df['high'] - df['low']
+    df['H-PC'] = abs(df['high'] - df['close'].shift(1))
+    df['L-PC'] = abs(df['low'] - df['close'].shift(1))
+    df['TR'] = df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
+
+    ma = ma.upper()
+    if ma == 'SMA':
+        df['ATR'] = df['TR'].rolling(window=ma_period).mean()
+    elif ma == 'EMA':
+        df['ATR'] = df['TR'].ewm(span=ma_period, adjust=False).mean()
+    elif ma == 'RMA':
+        df['ATR'] = df['TR'].ewm(alpha=1 / ma_period, adjust=False).mean()
+    elif ma == 'HIGHEST':
+        df['ATR'] = df['TR'].rolling(window=ma_period).max()
+    else:
+        raise ValueError("Invalid ma type. Use 'SMA', 'EMA', 'RMA', or 'Highest'.")
+
+    return df['ATR'].iloc[-1]
+
+def calculate_trailing_start_from_atr(symbol, multiplier=2.125, ma='HIGHEST', ma_period=48):
+    df = fetch_4h_ohlcv(symbol)
+    if df is None:
+        return None
+    atr = calculate_atr(df, ma_period=ATR_MA_PERIOD, ma=ma)
+    last_close = df['close'].iloc[-1]
+    atr_percent = (atr / last_close) * 100
+    trailing_start = round(atr_percent * multiplier, 2)
+    print_with_date(f"[ATR] {symbol} {ma}(ATR(ma_period)) = {atr:.2f}, % = {atr_percent:.2f}, TRAILING_START = {trailing_start}%")
+    return trailing_start
