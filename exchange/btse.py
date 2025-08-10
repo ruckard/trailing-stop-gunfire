@@ -231,6 +231,19 @@ def compute_contracts_from_prices(symbols, contract_sizes):
     print_with_date(f"[SIZING] Final TotalNotional={total_notional()}, TargetBudget={target_budget}")
     return final_contracts_map, max_expected_loss
 
+# === Get Current Price ===
+def get_current_price(symbol):
+    try:
+        url = f"{BASE_URL}/api/v2.2/price?symbol={symbol}"
+        response = throttled_request('GET', url)
+        response.raise_for_status()
+        data = response.json()
+        if isinstance(data, list) and data:
+            return float(data[0].get("lastPrice"))
+    except Exception as e:
+        print_with_date(f"[ERROR] Fetching price failed: {e}")
+    return None
+
 # ===============================
 # Order Placement
 # ===============================

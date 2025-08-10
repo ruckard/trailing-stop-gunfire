@@ -21,6 +21,7 @@ from exchange.btse import (
     fetch_contract_sizes,
     fetch_min_price_increments,
     compute_contracts_from_prices,
+    get_current_price,
     place_range_order,
     close_position,
     update_leverage,
@@ -1457,19 +1458,6 @@ def generate_signature(api_secret, url_path, nonce, body_str):
         hashlib.sha384
     ).hexdigest()
     return signature
-
-# === Get Current Price ===
-def get_current_price(symbol):
-    try:
-        url = f"{BASE_URL}/api/v2.2/price?symbol={symbol}"
-        response = throttled_request('GET', url)
-        response.raise_for_status()
-        data = response.json()
-        if isinstance(data, list) and data:
-            return float(data[0].get("lastPrice"))
-    except Exception as e:
-        print_with_date(f"[ERROR] Fetching price failed: {e}")
-    return None
 
 # === Place Trailing Stop Order on BTSE ===
 def place_trailing_stop(symbol, position_side, callback_rate, contracts):
