@@ -348,7 +348,7 @@ def get_final_symbol_list():
             seen.add(s)
     return final
 
-TRAILING_STOPS_MAP = build_trailing_stops_map()
+TRAILING_STOPS_MAP = build_trailing_stops_map(SYMBOL_CONFIGS)
 
 # === Constants ===
 CONTRACT_SIZE = 0.00001  # fixed for BTC-PERP on BTSE

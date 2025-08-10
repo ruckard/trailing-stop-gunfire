@@ -1,6 +1,6 @@
-def build_trailing_stops_map():
+def build_trailing_stops_map(symbol_configs):
     result = {}
-    for symbol, cfg in SYMBOL_CONFIGS.items():
+    for symbol, cfg in symbol_configs.items():
         trailing_start = calculate_trailing_start_from_atr(symbol)
         if trailing_start is None:
             continue  # or raise/log error
