@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta, timezone
 from exchange.btse import fetch_top_symbols_by_volume
 
+import sqlite3
+
 def update_symbol_registry(symbols, KNOWN_SYMBOLS_DB_PATH):
     conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
     c = conn.cursor()
