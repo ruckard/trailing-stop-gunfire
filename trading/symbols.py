@@ -7,6 +7,7 @@ import sqlite3
 import state
 
 import db.knownsymbols as knownsymbolsdb
+import trading.trend as trend
 
 def update_symbol_registry(symbols):
     conn = sqlite3.connect(state.KNOWN_SYMBOLS_DB_PATH)
@@ -97,21 +98,21 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
     for symbol in symbols:
         # Compute score based on rank type
         if rank_type == 'EMA':
-            score = calculate_ema_trend_score(symbol)
+            score = trend.calculate_ema_trend_score(symbol)
         elif rank_type == 'TRENDEST':
-            score = calculate_trendest_with_rsi(symbol)
+            score = trend.calculate_trendest_with_rsi(symbol)
         elif rank_type == 'EASY':
-            score = calculate_easy_trend_with_rsi(symbol)
+            score = trend.calculate_easy_trend_with_rsi(symbol)
         elif rank_type == 'EASY2':
-            score = calculate_easy_trend2_with_rsi(symbol)
+            score = trend.calculate_easy_trend2_with_rsi(symbol)
         elif rank_type == 'EASY3':
-            score = calculate_easy_trend3_with_rsi(symbol)
+            score = trend.calculate_easy_trend3_with_rsi(symbol)
         elif rank_type == 'EASY4':
-            score = calculate_easy_trend4_with_rsi(symbol)
+            score = trend.calculate_easy_trend4_with_rsi(symbol)
         elif rank_type == 'EASY5':
-            score = calculate_easy_trend5_with_rsi(symbol)
+            score = trend.calculate_easy_trend5_with_rsi(symbol)
         elif rank_type == 'EASY6':
-            score = calculate_easy_trend6_with_rsi(symbol)
+            score = trend.calculate_easy_trend6_with_rsi(symbol)
         else:
             raise ValueError(f"Unsupported rank_type: {rank_type}")
 
