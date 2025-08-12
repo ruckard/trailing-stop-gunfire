@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 def update_symbol_registry(symbols):
     conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
     c = conn.cursor()
