@@ -253,10 +253,6 @@ MIN_PRICE_INCREMENTS = {}
 
 LAST_AVAILABLE_BALANCE = None
 
-# { symbol: (dataframe, timestamp) }
-OHLCV_CACHE = {}
-OHLCV_CACHE_TIMEOUT = timedelta(minutes=5)
-
 TRENDRANGE_CACHE = {}  # symbol → (timestamp, result)
 TRENDRANGE_CACHE_TIMEOUT = 5 * 60  # 5 minutes
 

@@ -10,6 +10,10 @@ from decimal import Decimal
 from config import API_KEY, API_SECRET, BASE_URL
 from utils import print_with_date, lock_guard, debug
 
+
+OHLCV_CACHE = {}
+OHLCV_CACHE_TIMEOUT = timedelta(minutes=5)
+
 # ===============================
 # Others
 # ===============================
