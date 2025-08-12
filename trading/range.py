@@ -1,4 +1,5 @@
 import db.positions as positionsdb
+import state
 
 def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
                           entry_offset_pct=0.5, take_profit_pct=0.7, stop_loss_pct=0.5):
@@ -64,7 +65,7 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
 
         # Optionally track position:
         pid = f"range-{side.lower()}-{i}"
-        positions[symbol][pid] = {
+        state.positions[symbol][pid] = {
             "position_id": cl_order_id,
             "opening_order_id": cl_order_id,
             "closing_order_id": None,
@@ -75,4 +76,4 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
             "trail_value": None,
             "opened_at": time.time()
         }
-        positionsdb.update_position(pid, positions[symbol][pid], symbol)
+        positionsdb.update_position(pid, state.positions[symbol][pid], symbol)

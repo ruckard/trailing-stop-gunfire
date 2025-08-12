@@ -71,7 +71,7 @@ def load_positions(symbol):
     rows = c.fetchall()
     conn.close()
     for pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, opened_at in rows:
-        positions[symbol][pid] = {
+        state.positions[symbol][pid] = {
             "position_id": position_id,
             "opening_order_id": opening_order_id,
             "closing_order_id": closing_order_id,

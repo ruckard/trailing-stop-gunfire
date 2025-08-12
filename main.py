@@ -303,10 +303,9 @@ def generate_signature(api_secret, url_path, nonce, body_str):
     return signature
 
 # === Store Positions ===
-positions = {}
+state.positions = {}
 
 def start_new_cycle(resume=False):
-    global positions
     if resume:
         active_symbols = get_active_symbols_from_db()
         symbols = list(active_symbols.keys())

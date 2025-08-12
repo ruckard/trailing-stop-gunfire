@@ -2,10 +2,10 @@ import state
 
 def show_positions(symbol):
     print_with_date("[POSITIONS LOADED FROM DB]")
-    if not positions[symbol]:
+    if not state.positions[symbol]:
         print_with_date(f"No {symbol} positions stored.")
         return
-    for pid, info in positions[symbol].items():
+    for pid, info in state.positions[symbol].items():
         print_with_date(
             f"[STORED] {symbol} | {info['side']} | Callback: {info['callback']}%"
         )
@@ -81,12 +81,12 @@ def get_positions_status(symbol=None):
 def get_position_status(position_id):
     try:
         # Get all positions first
-        positions = get_positions_status()
+        state.positions = get_positions_status()
         debug(f"Checking positions for position_id: {position_id}")
-        debug(f"All positions: {positions}")
+        debug(f"All positions: {state.positions}")
 
         # Find the position with the matching position_id
-        for position in positions:
+        for position in state.positions:
             if position.get('positionId') == position_id:
                 debug(f"Found position with position_id: {position_id}")
                 return position

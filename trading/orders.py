@@ -154,7 +154,7 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
 def place_all_positions(symbol, sides=("LONG", "SHORT")):
     global CONTRACTS_MAP
     print_with_date(f"[STARTING NEW {symbol} CYCLE]")
-    positions[symbol].clear()
+    state.positions[symbol].clear()
     clear_positions(symbol)
     trend_type = classify_trend_or_range(symbol)
 
@@ -177,7 +177,7 @@ def place_trend_positions(symbol, sides):
                 print_with_date(f"[ERROR] Failed to place trailing stop for {symbol} {side} at {callback}%")
                 continue
             pos_id, opening_order_id, closing_order_id, opening_price, trail_value = result
-            positions[symbol][pid] = {
+            state.positions[symbol][pid] = {
                 "position_id": pos_id,
                 "opening_order_id": opening_order_id,
                 "closing_order_id": closing_order_id,
@@ -188,14 +188,14 @@ def place_trend_positions(symbol, sides):
                 "trail_value" : trail_value,
                 "opened_at": time.time()
             }
-            position_info = positions[symbol][pid]
+            position_info = state.positions[symbol][pid]
             positionsdb.update_position(pid, position_info, symbol)
 
 # === Check and Manage Positions ===
 def check_positions(symbol):
     global CONTRACTS_MAP
     all_closed = True
-    for pid, info in positions[symbol].items():
+    for pid, info in state.positions[symbol].items():
         debug(f"[check_positions] Checking... {symbol} {pid}")
         if not info["active"]:
             continue
@@ -261,7 +261,7 @@ def check_positions(symbol):
                     contracts = CONTRACTS_MAP.get(symbol, 1)
                     new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
                     if new_pos_id and new_closing_order_id:
-                        positions[symbol][pid] = {
+                        state.positions[symbol][pid] = {
                             "position_id": new_pos_id,
                             "opening_order_id": new_opening_order_id,
                             "closing_order_id": new_closing_order_id,
@@ -271,7 +271,7 @@ def check_positions(symbol):
                             "opening_price" : opening_price,
                             "trail_value" : trail_value
                         }
-                        position_info = positions[symbol][pid]
+                        position_info = state.positions[symbol][pid]
                         positionsdb.update_position(pid, position_info, symbol)
                         all_closed = False
                         continue
@@ -284,7 +284,7 @@ def check_positions(symbol):
                     contracts = CONTRACTS_MAP.get(symbol, 1)
                     new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
                     if new_pos_id and new_closing_order_id:
-                        positions[symbol][pid] = {
+                        state.positions[symbol][pid] = {
                             "position_id": new_pos_id,
                             "opening_order_id": new_opening_order_id,
                             "closing_order_id": new_closing_order_id,
@@ -294,7 +294,7 @@ def check_positions(symbol):
                             "opening_price" : opening_price,
                             "trail_value" : trail_value
                         }
-                        position_info = positions[symbol][pid]
+                        position_info = state.positions[symbol][pid]
                         positionsdb.update_position(pid, position_info, symbol)
                         all_closed = False
                         continue
@@ -321,7 +321,7 @@ def check_positions(symbol):
                     contracts = CONTRACTS_MAP.get(symbol, 1)
                     new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
                     if new_pos_id and new_closing_order_id:
-                        positions[symbol][pid] = {
+                        state.positions[symbol][pid] = {
                             "position_id": new_pos_id,
                             "opening_order_id": new_opening_order_id,
                             "closing_order_id": new_closing_order_id,
@@ -331,7 +331,7 @@ def check_positions(symbol):
                             "opening_price" : opening_price,
                             "trail_value" : trail_value
                         }
-                        position_info = positions[symbol][pid]
+                        position_info = state.positions[symbol][pid]
                         positionsdb.update_position(pid, position_info, symbol)
                         all_closed = False
                         continue
@@ -344,7 +344,7 @@ def check_positions(symbol):
                     contracts = CONTRACTS_MAP.get(symbol, 1)
                     new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
                     if new_pos_id and new_closing_order_id:
-                        positions[symbol][pid] = {
+                        state.positions[symbol][pid] = {
                             "position_id": new_pos_id,
                             "opening_order_id": new_opening_order_id,
                             "closing_order_id": new_closing_order_id,
@@ -354,7 +354,7 @@ def check_positions(symbol):
                             "opening_price" : opening_price,
                             "trail_value" : trail_value
                         }
-                        position_info = positions[symbol][pid]
+                        position_info = state.positions[symbol][pid]
                         positionsdb.update_position(pid, position_info, symbol)
                         all_closed = False
                         continue
