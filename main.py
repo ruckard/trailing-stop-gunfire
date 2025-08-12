@@ -17,6 +17,7 @@ from contextlib import contextmanager
 from api_lock_client import api_lock_acquire_lock, api_lock_release_lock
 
 import state
+import db/positions as positionsdb
 
 from exchange.btse import (
     get_market_summary,
@@ -64,7 +65,6 @@ from trading.range import (
 from trading.positions import (
     show_positions,
     load_positions,
-    update_position,
     clear_positions,
     get_positions_status,
     get_position_status,
@@ -105,27 +105,7 @@ getcontext().prec = 16
 # === DEBUG MODE ===
 DEBUG_MODE = False  # Set to False to disable debug logs
 
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS positions (
-            pid TEXT,
-            position_id TEXT,
-            opening_order_id TEXT,
-            closing_order_id TEXT,
-            side TEXT,
-            callback REAL,
-            active INTEGER,
-            opening_price TEXT,
-            trail_value REAL,
-            symbol TEXT,
-            opened_at REAL,
-            PRIMARY KEY (pid, symbol)
-        )
-    ''')
-    conn.commit()
-    conn.close()
+
 
 def init_known_symbols_db():
     conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
@@ -435,7 +415,7 @@ def start_new_cycle(resume=False):
 
 # === Main Loop ===
 def run_main_loop():
-    init_db()
+    positionsdb.init_db()
 
     active_symbols = get_active_symbols_from_db()
     resume_cycle = bool(active_symbols)

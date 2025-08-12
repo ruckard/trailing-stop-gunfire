@@ -1,3 +1,5 @@
+import state
+
 def show_positions(symbol):
     print_with_date("[POSITIONS LOADED FROM DB]")
     if not positions[symbol]:
@@ -9,7 +11,7 @@ def show_positions(symbol):
         )
 
 def load_positions(symbol):
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(state.DB_PATH)
     c = conn.cursor()
     c.execute(f"SELECT pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, opened_at FROM positions WHERE symbol = \"{symbol}\"")
     rows = c.fetchall()
@@ -26,49 +28,8 @@ def load_positions(symbol):
             "opened_at": opened_at,
         }
 
-def update_position(pid, info, symbol):
-
-    # Undefined opening_price workaround
-    if "opening_price" not in info:
-        opening_price = 0.0
-        info["opening_price"] = opening_price
-    else:
-        opening_price = info["opening_price"]
-
-    # Undefined trail_value workaround
-    if "trail_value" not in info:
-        trail_value = 0.0
-    else:
-        trail_value = info["trail_value"]
-
-    # Undefined opened_at workaround
-    if "opened_at" not in info:
-        opened_at = time.time()
-    else:
-        opened_at = info["opened_at"]
-
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''
-        INSERT INTO positions (pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, symbol, opened_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(pid, symbol) DO UPDATE SET
-            position_id=excluded.position_id,
-            opening_order_id=excluded.opening_order_id,
-            closing_order_id=excluded.closing_order_id,
-            side=excluded.side,
-            callback=excluded.callback,
-            active=excluded.active,
-            opening_price=excluded.opening_price,
-            trail_value=excluded.trail_value,
-            symbol=excluded.symbol,
-            opened_at=excluded.opened_at
-    ''', (pid, info['position_id'], info['opening_order_id'], info['closing_order_id'], info['side'], float(info['callback']), bool_to_int(info['active']), opening_price, trail_value, symbol, opened_at))
-    conn.commit()
-    conn.close()
-
 def clear_positions(symbol):
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(state.DB_PATH)
     c = conn.cursor()
     c.execute(f"DELETE FROM positions WHERE symbol = \"{symbol}\"")
     conn.commit()

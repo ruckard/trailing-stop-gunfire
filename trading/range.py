@@ -1,3 +1,5 @@
+import db/positions as positionsdb
+
 def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
                           entry_offset_pct=0.5, take_profit_pct=0.7, stop_loss_pct=0.5):
     """
@@ -73,4 +75,4 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
             "trail_value": None,
             "opened_at": time.time()
         }
-        update_position(pid, positions[symbol][pid], symbol)
+        positionsdb.update_position(pid, positions[symbol][pid], symbol)

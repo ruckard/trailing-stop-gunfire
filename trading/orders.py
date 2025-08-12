@@ -2,6 +2,7 @@ from . import trend
 from decimal import Decimal
 
 import state
+import db/positions as positionsdb
 
 def build_trailing_stops_map():
     result = {}
@@ -188,7 +189,7 @@ def place_trend_positions(symbol, sides):
                 "opened_at": time.time()
             }
             position_info = positions[symbol][pid]
-            update_position(pid, position_info, symbol)
+            positionsdb.update_position(pid, position_info, symbol)
 
 # === Check and Manage Positions ===
 def check_positions(symbol):
@@ -207,7 +208,7 @@ def check_positions(symbol):
                 # Code to close the position immediately:
                 close_position(symbol, info)  # You'll need to implement or call your existing close logic
                 info["active"] = False
-                update_position(pid, info, symbol)
+                positionsdb.update_position(pid, info, symbol)
                 continue
 
         position_data = get_position_status(info["position_id"])
@@ -232,7 +233,7 @@ def check_positions(symbol):
             if not trade:
                 print_with_date(f"[ERROR] No closing trade found for order_id {info['closing_order_id']}")
                 info["active"] = False
-                update_position(pid, info, symbol)
+                positionsdb.update_position(pid, info, symbol)
                 continue
             pnl1 = Decimal(str(trade.get("total")))
 
@@ -251,7 +252,7 @@ def check_positions(symbol):
             debug(f"[CLOSED/TRADE] {symbol} {pid} | Realized PnL2: {pnl2:.8f}")
             print_with_date(f"[CLOSED/TRADE] {symbol} {pid} | Realized PnL: {pnl:.8f}")
             info["active"] = False
-            update_position(pid, info, symbol)
+            positionsdb.update_position(pid, info, symbol)
 
             if is_win_from_trade(pnl):
                 if REOPEN_ON_WIN:
@@ -271,7 +272,7 @@ def check_positions(symbol):
                             "trail_value" : trail_value
                         }
                         position_info = positions[symbol][pid]
-                        update_position(pid, position_info, symbol)
+                        positionsdb.update_position(pid, position_info, symbol)
                         all_closed = False
                         continue
                 else:
@@ -294,7 +295,7 @@ def check_positions(symbol):
                             "trail_value" : trail_value
                         }
                         position_info = positions[symbol][pid]
-                        update_position(pid, position_info, symbol)
+                        positionsdb.update_position(pid, position_info, symbol)
                         all_closed = False
                         continue
                     else:
@@ -311,7 +312,7 @@ def check_positions(symbol):
         else:
             print_with_date(f"[CLOSED] {symbol} {pid} position is now closed.")
             info["active"] = False
-            update_position(pid, info, symbol)
+            positionsdb.update_position(pid, info, symbol)
             trade = get_trade_by_closing_order_id(symbol, info["closing_order_id"])
             pnl = trade.get("total") if trade else None
             if pnl is not None and is_win_from_trade(pnl):
@@ -331,7 +332,7 @@ def check_positions(symbol):
                             "trail_value" : trail_value
                         }
                         position_info = positions[symbol][pid]
-                        update_position(pid, position_info, symbol)
+                        positionsdb.update_position(pid, position_info, symbol)
                         all_closed = False
                         continue
                 else:
@@ -354,7 +355,7 @@ def check_positions(symbol):
                             "trail_value" : trail_value
                         }
                         position_info = positions[symbol][pid]
-                        update_position(pid, position_info, symbol)
+                        positionsdb.update_position(pid, position_info, symbol)
                         all_closed = False
                         continue
                 else:
