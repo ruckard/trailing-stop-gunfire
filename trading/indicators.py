@@ -1,6 +1,7 @@
 import pandas as pd
 from utils import print_with_date
 from exchange.btse import fetch_4h_ohlcv  # temporary — will be configurable later
+from decimal import Decimal
 
 def get_atr(symbol, period=14):
     try:
