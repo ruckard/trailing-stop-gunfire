@@ -8,6 +8,7 @@ import state
 
 import db.knownsymbols as knownsymbolsdb
 import trading.trend as trend
+from trading.indicators import get_atr
 
 def update_symbol_registry(symbols):
     conn = sqlite3.connect(state.KNOWN_SYMBOLS_DB_PATH)
