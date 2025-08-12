@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from exchange.btse import fetch_top_symbols_by_volume
 
-def update_symbol_registry(symbols):
+def update_symbol_registry(symbols, KNOWN_SYMBOLS_DB_PATH):
     conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
     c = conn.cursor()
 
@@ -15,7 +15,7 @@ def update_symbol_registry(symbols):
     conn.commit()
     conn.close()
 
-def set_symbol_as_ready(symbol):
+def set_symbol_as_ready(symbol, KNOWN_SYMBOLS_DB_PATH):
     conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
     c = conn.cursor()
 
@@ -31,13 +31,13 @@ def set_symbol_as_ready(symbol):
     conn.commit()
     conn.close()
 
-def setup_symbol_modes():
+def setup_symbol_modes(KNOWN_SYMBOLS_DB_PATH):
     new_symbols = get_new_symbols()
 
     for sym in new_symbols:
         update_symbol_settings(sym)  # run the actual setup
         print_with_date(f"[SETUP] {sym}: Setting up trading mode → status = 'ready'")
-        set_symbol_as_ready(sym)
+        set_symbol_as_ready(sym, KNOWN_SYMBOLS_DB_PATH)
 
 def filter_old_symbols(summary_data, MIN_CONTRACT_AGE_DAYS):
     cutoff = datetime.now(timezone.utc) - timedelta(days=MIN_CONTRACT_AGE_DAYS)

@@ -375,10 +375,10 @@ def start_new_cycle(resume=False):
         filtered_symbols = filter_symbols_by_age_and_volume(market_summary, MIN_CONTRACT_AGE_DAYS, TOP_SYMBOLS_BY_VOLUME, ADDITIONAL_SYMBOLS, EXCLUDED_SYMBOLS)
 
         # 4️⃣ Update DB registry with filtered symbols
-        update_symbol_registry(filtered_symbols)
+        update_symbol_registry(filtered_symbols, KNOWN_SYMBOLS_DB_PATH)
 
         # 5️⃣ Setup modes for new symbols (mockup)
-        setup_symbol_modes()
+        setup_symbol_modes(KNOWN_SYMBOLS_DB_PATH)
 
         # 6️⃣ Get only 'ready' symbols for trading
         base_symbols = get_ready_symbols()
