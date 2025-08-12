@@ -45,7 +45,7 @@ def calculate_easy_trend6_with_rsi(symbol, lookback=50, rsi_period=14,
     - Range and RSI filters disabled.
     """
 
-    df = fetch_4h_ohlcv(symbol)
+    df = exchange.fetch_4h_ohlcv(symbol)
     if df is None or df.empty or len(df) < lookback:
         return 0.0
 
@@ -123,7 +123,7 @@ def calculate_easy_trend5_with_rsi(symbol, lookback=50, rsi_period=14,
     Uses ohlc4 and weights consistency of slopes to determine trend.
     """
 
-    df = fetch_4h_ohlcv(symbol)
+    df = exchange.fetch_4h_ohlcv(symbol)
     if df is None or df.empty or len(df) < lookback:
         return 0.0
 
@@ -202,7 +202,7 @@ def calculate_easy_trend4_with_rsi(symbol, lookback=50, rsi_period=14,
     Uses ohlc4 and log-return based slopes per segment with volatility normalization.
     """
 
-    df = fetch_4h_ohlcv(symbol)
+    df = exchange.fetch_4h_ohlcv(symbol)
     if df is None or df.empty or len(df) < lookback:
         return 0.0
 
@@ -286,7 +286,7 @@ def calculate_easy_trend3_with_rsi(symbol, lookback=50, rsi_period=14,
     - Downtrend: last candle < first candle
     """
 
-    df = fetch_4h_ohlcv(symbol)
+    df = exchange.fetch_4h_ohlcv(symbol)
     if df is None or df.empty or len(df) < lookback:
         return 0.0
 
@@ -366,7 +366,7 @@ def calculate_easy_trend2_with_rsi(symbol, lookback=50, rsi_period=14,
     For >=10 candles, slope is based on start/end ohlc4 per segment and normalized.
     """
 
-    df = fetch_4h_ohlcv(symbol)
+    df = exchange.fetch_4h_ohlcv(symbol)
     if df is None or df.empty or len(df) < lookback:
         return 0.0
 
@@ -449,7 +449,7 @@ def calculate_easy_trend_with_rsi(symbol, lookback=50, rsi_period=14,
     For >=10 candles, slope is based on start/end closes per segment and normalized.
     """
 
-    df = fetch_4h_ohlcv(symbol)
+    df = exchange.fetch_4h_ohlcv(symbol)
     if df is None or df.empty or len(df) < lookback:
         return 0.0
 
@@ -534,7 +534,7 @@ def calculate_trendest_with_rsi(symbol, lookback=50, rsi_period=14,
     Requires all segments to have the same slope direction.
     """
 
-    df = fetch_4h_ohlcv(symbol)
+    df = exchange.fetch_4h_ohlcv(symbol)
     if df is None or df.empty or len(df) < lookback:
         return 0.0
 
@@ -596,7 +596,7 @@ def calculate_trend_with_rsi(symbol, lookback=50, rsi_period=14, rsi_low_percent
     """
 
     # Fetch candles using the cached function
-    df = fetch_4h_ohlcv(symbol)
+    df = exchange.fetch_4h_ohlcv(symbol)
     if df is None or df.empty or len(df) < lookback:
         return 0.0
 
@@ -632,7 +632,7 @@ def calculate_trend_with_rsi(symbol, lookback=50, rsi_period=14, rsi_low_percent
     return float(slope_normalized)
 
 def calculate_ema_trend_score(symbol, lookback=50):
-    df = fetch_4h_ohlcv(symbol)  # currently returns 5m candles
+    df = exchange.fetch_4h_ohlcv(symbol)  # currently returns 5m candles
     if df is None or len(df) < lookback:
         return 0
 
