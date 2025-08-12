@@ -2,7 +2,7 @@ from . import trend
 from decimal import Decimal
 
 import state
-import db/positions as positionsdb
+import db.positions as positionsdb
 
 def build_trailing_stops_map():
     result = {}
