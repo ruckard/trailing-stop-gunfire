@@ -1,7 +1,7 @@
 from . import trend
 from decimal import Decimal
 
-def build_trailing_stops_map(symbol_configs):
+def build_trailing_stops_map(symbol_configs, DEFAULT_TRAILING_STEP_MULTIPLIER, DEFAULT_TRAILING_COUNT):
     result = {}
     for symbol, cfg in symbol_configs.items():
         trailing_start = trend.calculate_trailing_start_from_atr(symbol)
@@ -9,9 +9,9 @@ def build_trailing_stops_map(symbol_configs):
             continue  # or raise/log error
 
         trailing_start_decimal = Decimal(str(trailing_start))
-        step_multiplier = Decimal(str(cfg.get("TRAILING_STEP_MULTIPLIER", TRAILING_STEP_MULTIPLIER_DEFAULT)))
+        step_multiplier = Decimal(str(cfg.get("TRAILING_STEP_MULTIPLIER", DEFAULT_TRAILING_STEP_MULTIPLIER)))
         trailing_step = trailing_start_decimal * step_multiplier
-        trailing_count = cfg.get("TRAILING_COUNT", TRAILING_COUNT_DEFAULT)
+        trailing_count = cfg.get("TRAILING_COUNT", DEFAULT_TRAILING_COUNT)
 
         result[symbol] = [
             float(round(trailing_start_decimal + i * trailing_step, 8))
