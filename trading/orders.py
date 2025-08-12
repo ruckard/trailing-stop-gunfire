@@ -1,4 +1,5 @@
 from . import trend
+from decimal import Decimal
 
 def build_trailing_stops_map(symbol_configs):
     result = {}
