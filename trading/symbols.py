@@ -3,8 +3,10 @@ from exchange.btse import fetch_top_symbols_by_volume
 
 import sqlite3
 
-def update_symbol_registry(symbols, KNOWN_SYMBOLS_DB_PATH):
-    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
+import state
+
+def update_symbol_registry(symbols):
+    conn = sqlite3.connect(state.KNOWN_SYMBOLS_DB_PATH)
     c = conn.cursor()
 
     for sym in symbols:
@@ -17,8 +19,8 @@ def update_symbol_registry(symbols, KNOWN_SYMBOLS_DB_PATH):
     conn.commit()
     conn.close()
 
-def set_symbol_as_ready(symbol, KNOWN_SYMBOLS_DB_PATH):
-    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
+def set_symbol_as_ready(symbol):
+    conn = sqlite3.connect(state.KNOWN_SYMBOLS_DB_PATH)
     c = conn.cursor()
 
     # Check if the symbol already exists
@@ -33,16 +35,16 @@ def set_symbol_as_ready(symbol, KNOWN_SYMBOLS_DB_PATH):
     conn.commit()
     conn.close()
 
-def setup_symbol_modes(KNOWN_SYMBOLS_DB_PATH):
+def setup_symbol_modes():
     new_symbols = get_new_symbols()
 
     for sym in new_symbols:
         update_symbol_settings(sym)  # run the actual setup
         print_with_date(f"[SETUP] {sym}: Setting up trading mode → status = 'ready'")
-        set_symbol_as_ready(sym, KNOWN_SYMBOLS_DB_PATH)
+        set_symbol_as_ready(sym)
 
-def filter_old_symbols(summary_data, MIN_CONTRACT_AGE_DAYS):
-    cutoff = datetime.now(timezone.utc) - timedelta(days=MIN_CONTRACT_AGE_DAYS)
+def filter_old_symbols(summary_data):
+    cutoff = datetime.now(timezone.utc) - timedelta(days=state.MIN_CONTRACT_AGE_DAYS)
     eligible = []
     for entry in summary_data:
         contract_start = datetime.fromtimestamp(entry.get("contractStart", 0) / 1000, tz=timezone.utc)
@@ -50,25 +52,25 @@ def filter_old_symbols(summary_data, MIN_CONTRACT_AGE_DAYS):
             eligible.append(entry["symbol"])
     return eligible
 
-def filter_symbols_by_age_and_volume(market_summary, MIN_CONTRACT_AGE_DAYS, TOP_SYMBOLS_BY_VOLUME, ADDITIONAL_SYMBOLS, EXCLUDED_SYMBOLS):
+def filter_symbols_by_age_and_volume(market_summary):
     # Filter symbols older than MIN_CONTRACT_AGE_DAYS
-    aged_symbols = filter_old_symbols(market_summary, MIN_CONTRACT_AGE_DAYS)  # list of strings
+    aged_symbols = filter_old_symbols(market_summary, state.MIN_CONTRACT_AGE_DAYS)  # list of strings
     aged_symbol_names = set(aged_symbols)
 
     # Fetch top volume symbols (no filtering parameter)
-    top_symbols = fetch_top_symbols_by_volume(limit=TOP_SYMBOLS_BY_VOLUME)
+    top_symbols = fetch_top_symbols_by_volume(limit=state.TOP_SYMBOLS_BY_VOLUME)
 
     # Keep only aged symbols from the top volume list
     filtered_top_symbols = [s for s in top_symbols if s in aged_symbol_names]
 
     # Add forced additional symbols
-    combined = filtered_top_symbols + ADDITIONAL_SYMBOLS
+    combined = filtered_top_symbols + state.ADDITIONAL_SYMBOLS
 
     # Remove excluded and deduplicate
     seen = set()
     final = []
     for s in combined:
-        if s not in EXCLUDED_SYMBOLS and s not in seen:
+        if s not in state.EXCLUDED_SYMBOLS and s not in seen:
             final.append(s)
             seen.add(s)
 

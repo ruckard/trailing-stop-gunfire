@@ -188,8 +188,8 @@ DEFAULT_SYMBOL_CONFIGS = {
     }
 }
 
-DEFAULT_TRAILING_STEP_MULTIPLIER = 0.375  # default global value
-DEFAULT_TRAILING_COUNT = 1
+state.DEFAULT_TRAILING_STEP_MULTIPLIER = 0.375  # default global value
+state.DEFAULT_TRAILING_COUNT = 1
 DEFAULT_TOP_SYMBOLS_BY_VOLUME = 1000
 DEFAULT_TRADE_MAX_CANDLES = 50
 DEFAULT_CANDLE_INTERVAL_MINUTES = 5
@@ -213,16 +213,16 @@ DEFAULT_RANGE_STOP_LOSS_PCT = 0.5
 DEFAULT_MAXIMUM_LONG_TRADES_NUMBER = 6
 DEFAULT_MAXIMUM_SHORT_TRADES_NUMBER = 6
 
-KNOWN_SYMBOLS_DB_PATH = "known_symbols.db"
-MIN_CONTRACT_AGE_DAYS = 15
+state.KNOWN_SYMBOLS_DB_PATH = "known_symbols.db"
+state.MIN_CONTRACT_AGE_DAYS = 15
 
 # Default client name is the directory name where script is running
 DEFAULT_CLIENT_NAME = os.path.basename(os.getcwd())
 
-SYMBOL_CONFIGS = safe_override_import_or_default("override_config", "SYMBOL_CONFIGS", DEFAULT_SYMBOL_CONFIGS)
+state.SYMBOL_CONFIGS = safe_override_import_or_default("override_config", "SYMBOL_CONFIGS", DEFAULT_SYMBOL_CONFIGS)
 API_DELAY_MS = safe_override_import_or_default("override_config", "API_DELAY_MS", DEFAULT_API_DELAY_MS)
 ATR_MA_PERIOD = safe_override_import_or_default("override_config", "ATR_MA_PERIOD", DEFAULT_ATR_MA_PERIOD)
-TOP_SYMBOLS_BY_VOLUME = safe_override_import_or_default("override_config", "TOP_SYMBOLS_BY_VOLUME", DEFAULT_TOP_SYMBOLS_BY_VOLUME)
+state.TOP_SYMBOLS_BY_VOLUME = safe_override_import_or_default("override_config", "TOP_SYMBOLS_BY_VOLUME", DEFAULT_TOP_SYMBOLS_BY_VOLUME)
 TRADE_MAX_CANDLES = safe_override_import_or_default("override_config", "TRADE_MAX_CANDLES", DEFAULT_TRADE_MAX_CANDLES)
 CANDLE_INTERVAL_MINUTES = safe_override_import_or_default("override_config", "CANDLE_INTERVAL_MINUTES", DEFAULT_CANDLE_INTERVAL_MINUTES)
 VOL_BOTTOM_PERCENTILE = safe_override_import_or_default("override_config", "VOL_BOTTOM_PERCENTILE", DEFAULT_VOL_BOTTOM_PERCENTILE)
@@ -235,12 +235,12 @@ RANGE_STOP_LOSS_PCT = safe_override_import_or_default("override_config", "RANGE_
 MAXIMUM_LONG_TRADES_NUMBER = safe_override_import_or_default("override_config", "MAXIMUM_LONG_TRADES_NUMBER", DEFAULT_MAXIMUM_LONG_TRADES_NUMBER)
 MAXIMUM_SHORT_TRADES_NUMBER = safe_override_import_or_default("override_config", "MAXIMUM_SHORT_TRADES_NUMBER", DEFAULT_MAXIMUM_SHORT_TRADES_NUMBER)
 CLIENT_NAME = safe_override_import_or_default("override_config", "CLIENT_NAME", DEFAULT_CLIENT_NAME)
-ADDITIONAL_SYMBOLS = safe_override_import_or_default("override_config", "ADDITIONAL_SYMBOLS", DEFAULT_ADDITIONAL_SYMBOLS)
-EXCLUDED_SYMBOLS = safe_override_import_or_default("override_config", "EXCLUDED_SYMBOLS", DEFAULT_EXCLUDED_SYMBOLS)
+state.ADDITIONAL_SYMBOLS = safe_override_import_or_default("override_config", "ADDITIONAL_SYMBOLS", DEFAULT_ADDITIONAL_SYMBOLS)
+state.EXCLUDED_SYMBOLS = safe_override_import_or_default("override_config", "EXCLUDED_SYMBOLS", DEFAULT_EXCLUDED_SYMBOLS)
 
 CONTRACTS_MAP = {}
 CONTRACT_SIZES = {}
-MIN_PRICE_INCREMENTS = {}
+state.MIN_PRICE_INCREMENTS = {}
 
 LAST_AVAILABLE_BALANCE = None
 
@@ -335,7 +335,7 @@ def get_final_symbol_list():
             seen.add(s)
     return final
 
-TRAILING_STOPS_MAP = build_trailing_stops_map(SYMBOL_CONFIGS, DEFAULT_TRAILING_STEP_MULTIPLIER, DEFAULT_TRAILING_COUNT)
+TRAILING_STOPS_MAP = build_trailing_stops_map()
 
 # === Constants ===
 CONTRACT_SIZE = 0.00001  # fixed for BTC-PERP on BTSE
@@ -372,13 +372,13 @@ def start_new_cycle(resume=False):
             return None, None, None
 
         # 3️⃣ Filter symbols by age and volume using the new helper
-        filtered_symbols = filter_symbols_by_age_and_volume(market_summary, MIN_CONTRACT_AGE_DAYS, TOP_SYMBOLS_BY_VOLUME, ADDITIONAL_SYMBOLS, EXCLUDED_SYMBOLS)
+        filtered_symbols = filter_symbols_by_age_and_volume(market_summary)
 
         # 4️⃣ Update DB registry with filtered symbols
-        update_symbol_registry(filtered_symbols, KNOWN_SYMBOLS_DB_PATH)
+        update_symbol_registry(filtered_symbols)
 
         # 5️⃣ Setup modes for new symbols (mockup)
-        setup_symbol_modes(KNOWN_SYMBOLS_DB_PATH)
+        setup_symbol_modes()
 
         # 6️⃣ Get only 'ready' symbols for trading
         base_symbols = get_ready_symbols()
@@ -400,9 +400,9 @@ def start_new_cycle(resume=False):
             print_with_date("[CYCLE] No valid symbols found. Skipping cycle.")
             return None, None, None
 
-    global CONTRACT_SIZES, MIN_PRICE_INCREMENTS, CONTRACTS_MAP
+    global CONTRACT_SIZES, CONTRACTS_MAP
     CONTRACT_SIZES = fetch_contract_sizes(symbols)
-    MIN_PRICE_INCREMENTS = fetch_min_price_increments(symbols)
+    state.MIN_PRICE_INCREMENTS = fetch_min_price_increments(symbols)
     CONTRACTS_MAP, MAX_EXPECTED_LOSS = compute_contracts_from_prices(symbols, CONTRACT_SIZES)
 
     print_with_date(f"[CONTRACT_SIZES] {CONTRACT_SIZES}")

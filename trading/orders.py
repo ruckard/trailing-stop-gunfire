@@ -1,7 +1,9 @@
 from . import trend
 from decimal import Decimal
 
-def build_trailing_stops_map(symbol_configs, DEFAULT_TRAILING_STEP_MULTIPLIER, DEFAULT_TRAILING_COUNT):
+import state
+
+def build_trailing_stops_map(symbol_configs):
     result = {}
     for symbol, cfg in symbol_configs.items():
         trailing_start = trend.calculate_trailing_start_from_atr(symbol)
@@ -9,9 +11,9 @@ def build_trailing_stops_map(symbol_configs, DEFAULT_TRAILING_STEP_MULTIPLIER, D
             continue  # or raise/log error
 
         trailing_start_decimal = Decimal(str(trailing_start))
-        step_multiplier = Decimal(str(cfg.get("TRAILING_STEP_MULTIPLIER", DEFAULT_TRAILING_STEP_MULTIPLIER)))
+        step_multiplier = Decimal(str(cfg.get("TRAILING_STEP_MULTIPLIER", state.DEFAULT_TRAILING_STEP_MULTIPLIER)))
         trailing_step = trailing_start_decimal * step_multiplier
-        trailing_count = cfg.get("TRAILING_COUNT", DEFAULT_TRAILING_COUNT)
+        trailing_count = cfg.get("TRAILING_COUNT", state.DEFAULT_TRAILING_COUNT)
 
         result[symbol] = [
             float(round(trailing_start_decimal + i * trailing_step, 8))
@@ -20,7 +22,7 @@ def build_trailing_stops_map(symbol_configs, DEFAULT_TRAILING_STEP_MULTIPLIER, D
     return result
 
 def update_trailing_stops_for_symbol(symbol):
-    cfg = SYMBOL_CONFIGS.get(symbol, {})
+    cfg = state.SYMBOL_CONFIGS.get(symbol, {})
 
     trailing_start = trend.calculate_trailing_start_from_atr(symbol)
     if trailing_start is None:
@@ -42,7 +44,6 @@ def update_trailing_stops_for_symbol(symbol):
 
 # === Place Trailing Stop Order on BTSE ===
 def place_trailing_stop(symbol, position_side, callback_rate, contracts):
-    global MIN_PRICE_INCREMENTS
     try:
         current_price = get_current_price(symbol)
         if not current_price:
@@ -50,7 +51,7 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
             return None, None, None, None, None
         callback_rate_float = float(callback_rate)
 
-        min_price_increment = MIN_PRICE_INCREMENTS.get(symbol)
+        min_price_increment = state.MIN_PRICE_INCREMENTS.get(symbol)
         if not min_price_increment:
             raise ValueError(f"No min price increment found for {symbol}")
 
