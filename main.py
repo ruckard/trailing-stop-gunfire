@@ -415,7 +415,7 @@ def start_new_cycle(resume=False):
 
 # === Main Loop ===
 def run_main_loop():
-    positionsdb.init_db()
+    positionsdb.init()
 
     active_symbols = get_active_symbols_from_db()
     resume_cycle = bool(active_symbols)
