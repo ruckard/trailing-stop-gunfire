@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from exchange.btse import fetch_top_symbols_by_volume
+from exchange.btse import fetch_top_symbols_by_volume, update_symbol_settings
 
 import sqlite3
 
