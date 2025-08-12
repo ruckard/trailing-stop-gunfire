@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from api_lock_client import api_lock_acquire_lock, api_lock_release_lock
 
 import state
-import db/positions as positionsdb
+import db.positions as positionsdb
 
 from exchange.btse import (
     get_market_summary,
