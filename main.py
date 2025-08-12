@@ -196,6 +196,7 @@ DEFAULT_MAXIMUM_LONG_TRADES_NUMBER = 6
 DEFAULT_MAXIMUM_SHORT_TRADES_NUMBER = 6
 
 state.KNOWN_SYMBOLS_DB_PATH = "known_symbols.db"
+state.DB_PATH = DB_PATH
 state.MIN_CONTRACT_AGE_DAYS = 15
 
 # Default client name is the directory name where script is running
