@@ -10,31 +10,6 @@ def show_positions(symbol):
             f"[STORED] {symbol} | {info['side']} | Callback: {info['callback']}%"
         )
 
-def load_positions(symbol):
-    conn = sqlite3.connect(state.DB_PATH)
-    c = conn.cursor()
-    c.execute(f"SELECT pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, opened_at FROM positions WHERE symbol = \"{symbol}\"")
-    rows = c.fetchall()
-    conn.close()
-    for pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, opened_at in rows:
-        positions[symbol][pid] = {
-            "position_id": position_id,
-            "opening_order_id": opening_order_id,
-            "closing_order_id": closing_order_id,
-            "side": side,
-            "callback": callback,
-            "active": int_to_bool(active),
-            "trail_value": trail_value,
-            "opened_at": opened_at,
-        }
-
-def clear_positions(symbol):
-    conn = sqlite3.connect(state.DB_PATH)
-    c = conn.cursor()
-    c.execute(f"DELETE FROM positions WHERE symbol = \"{symbol}\"")
-    conn.commit()
-    conn.close()
-
 # === Get All Positions Status (BTSE) ===
 def get_positions_status(symbol=None):
     try:

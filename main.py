@@ -65,8 +65,6 @@ from trading.range import (
 
 from trading.positions import (
     show_positions,
-    load_positions,
-    clear_positions,
     get_positions_status,
     get_position_status,
     get_trade_by_closing_order_id,
@@ -339,7 +337,7 @@ def start_new_cycle(resume=False):
         # Forget about old trades if we are starting a new cycle
         positions = {}
         for symbol in base_symbols:
-            clear_positions(symbol)
+            positionsdb.clear_positions(symbol)
         symbols, long_symbols, short_symbols = filter_symbols_by_rank(
             base_symbols,
             long_top_number=MAXIMUM_LONG_TRADES_NUMBER,
@@ -373,7 +371,7 @@ def start_new_cycle(resume=False):
     for symbol in symbols:
         if symbol not in positions:
             positions[symbol] = {}
-        load_positions(symbol)
+        positionsdb.load_positions(symbol)
         if not positions[symbol] and not resume:
             update_trailing_stops_for_symbol(symbol)
             if symbol in long_symbols:
