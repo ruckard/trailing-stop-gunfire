@@ -18,6 +18,7 @@ from api_lock_client import api_lock_acquire_lock, api_lock_release_lock
 
 import state
 import db.positions as positionsdb
+import db.knownsymbols as knownsymbolsdb
 
 from exchange.btse import (
     get_market_summary,
@@ -104,36 +105,6 @@ getcontext().prec = 16
 
 # === DEBUG MODE ===
 DEBUG_MODE = False  # Set to False to disable debug logs
-
-
-
-def init_known_symbols_db():
-    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS symbols (
-            symbol TEXT PRIMARY KEY,
-            status TEXT NOT NULL
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-def get_new_symbols():
-    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT symbol FROM symbols WHERE status='new'")
-    result = [r[0] for r in c.fetchall()]
-    conn.close()
-    return result
-
-def get_ready_symbols():
-    conn = sqlite3.connect(KNOWN_SYMBOLS_DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT symbol FROM symbols WHERE status='ready'")
-    result = [r[0] for r in c.fetchall()]
-    conn.close()
-    return result
 
 def get_active_symbols_from_db():
     conn = sqlite3.connect(DB_PATH)
@@ -347,7 +318,7 @@ def start_new_cycle(resume=False):
         print_with_date(f"[RESUME] Resuming cycle with SHORT symbols: {short_symbols}")
     else:
         # 1️⃣ Init DB
-        init_known_symbols_db()
+        knownsymbolsdb.init()
 
         # 2️⃣ Fetch market summary from BTSE
         market_summary = get_market_summary()
@@ -364,7 +335,7 @@ def start_new_cycle(resume=False):
         setup_symbol_modes()
 
         # 6️⃣ Get only 'ready' symbols for trading
-        base_symbols = get_ready_symbols()
+        base_symbols = knownsymbolsdb.get_ready_symbols()
         # Forget about old trades if we are starting a new cycle
         positions = {}
         for symbol in base_symbols:

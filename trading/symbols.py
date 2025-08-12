@@ -5,6 +5,8 @@ import sqlite3
 
 import state
 
+import db.knownsymbols as knownsymbolsdb
+
 def update_symbol_registry(symbols):
     conn = sqlite3.connect(state.KNOWN_SYMBOLS_DB_PATH)
     c = conn.cursor()
@@ -36,7 +38,7 @@ def set_symbol_as_ready(symbol):
     conn.close()
 
 def setup_symbol_modes():
-    new_symbols = get_new_symbols()
+    new_symbols = knownsymbolsdb.get_new_symbols()
 
     for sym in new_symbols:
         update_symbol_settings(sym)  # run the actual setup
