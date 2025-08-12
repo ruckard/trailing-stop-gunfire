@@ -56,7 +56,7 @@ def filter_old_symbols(summary_data):
 
 def filter_symbols_by_age_and_volume(market_summary):
     # Filter symbols older than MIN_CONTRACT_AGE_DAYS
-    aged_symbols = filter_old_symbols(market_summary, state.MIN_CONTRACT_AGE_DAYS)  # list of strings
+    aged_symbols = filter_old_symbols(market_summary)  # list of strings
     aged_symbol_names = set(aged_symbols)
 
     # Fetch top volume symbols (no filtering parameter)
