@@ -1,4 +1,5 @@
 from exchange import btse as exchange
+from utils import print_with_date, debug
 
 def classify_trend_or_range_real(symbol, lookback=50, threshold=0.0003):
     """
