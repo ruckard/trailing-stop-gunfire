@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from exchange.btse import fetch_top_symbols_by_volume, update_symbol_settings, get_current_price
 from utils import print_with_date, debug
+from decimal import Decimal
 
 import sqlite3
 
