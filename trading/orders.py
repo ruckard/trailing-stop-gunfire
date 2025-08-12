@@ -3,9 +3,9 @@ from decimal import Decimal
 
 import state
 
-def build_trailing_stops_map(symbol_configs):
+def build_trailing_stops_map():
     result = {}
-    for symbol, cfg in symbol_configs.items():
+    for symbol, cfg in state.SYMBOL_CONFIGS.items():
         trailing_start = trend.calculate_trailing_start_from_atr(symbol)
         if trailing_start is None:
             continue  # or raise/log error
