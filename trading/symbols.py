@@ -36,9 +36,18 @@ def setup_symbol_modes():
         print_with_date(f"[SETUP] {sym}: Setting up trading mode → status = 'ready'")
         set_symbol_as_ready(sym)
 
-def filter_symbols_by_age_and_volume(market_summary):
+def filter_old_symbols(summary_data, MIN_CONTRACT_AGE_DAYS):
+    cutoff = datetime.now(timezone.utc) - timedelta(days=MIN_CONTRACT_AGE_DAYS)
+    eligible = []
+    for entry in summary_data:
+        contract_start = datetime.fromtimestamp(entry.get("contractStart", 0) / 1000, tz=timezone.utc)
+        if contract_start <= cutoff:
+            eligible.append(entry["symbol"])
+    return eligible
+
+def filter_symbols_by_age_and_volume(market_summary, MIN_CONTRACT_AGE_DAYS):
     # Filter symbols older than MIN_CONTRACT_AGE_DAYS
-    aged_symbols = filter_old_symbols(market_summary)  # list of strings
+    aged_symbols = filter_old_symbols(market_summary, MIN_CONTRACT_AGE_DAYS)  # list of strings
     aged_symbol_names = set(aged_symbols)
 
     # Fetch top volume symbols (no filtering parameter)

@@ -153,15 +153,6 @@ def get_ready_symbols():
     conn.close()
     return result
 
-def filter_old_symbols(summary_data):
-    cutoff = datetime.now(timezone.utc) - timedelta(days=MIN_CONTRACT_AGE_DAYS)
-    eligible = []
-    for entry in summary_data:
-        contract_start = datetime.fromtimestamp(entry.get("contractStart", 0) / 1000, tz=timezone.utc)
-        if contract_start <= cutoff:
-            eligible.append(entry["symbol"])
-    return eligible
-
 def get_active_symbols_from_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -381,7 +372,7 @@ def start_new_cycle(resume=False):
             return None, None, None
 
         # 3️⃣ Filter symbols by age and volume using the new helper
-        filtered_symbols = filter_symbols_by_age_and_volume(market_summary)
+        filtered_symbols = filter_symbols_by_age_and_volume(market_summary, MIN_CONTRACT_AGE_DAYS)
 
         # 4️⃣ Update DB registry with filtered symbols
         update_symbol_registry(filtered_symbols)
