@@ -48,7 +48,7 @@ def filter_old_symbols(summary_data, MIN_CONTRACT_AGE_DAYS):
             eligible.append(entry["symbol"])
     return eligible
 
-def filter_symbols_by_age_and_volume(market_summary, MIN_CONTRACT_AGE_DAYS, TOP_SYMBOLS_BY_VOLUME):
+def filter_symbols_by_age_and_volume(market_summary, MIN_CONTRACT_AGE_DAYS, TOP_SYMBOLS_BY_VOLUME, ADDITIONAL_SYMBOLS):
     # Filter symbols older than MIN_CONTRACT_AGE_DAYS
     aged_symbols = filter_old_symbols(market_summary, MIN_CONTRACT_AGE_DAYS)  # list of strings
     aged_symbol_names = set(aged_symbols)
