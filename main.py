@@ -372,7 +372,7 @@ def start_new_cycle(resume=False):
             return None, None, None
 
         # 3️⃣ Filter symbols by age and volume using the new helper
-        filtered_symbols = filter_symbols_by_age_and_volume(market_summary, MIN_CONTRACT_AGE_DAYS, TOP_SYMBOLS_BY_VOLUME, ADDITIONAL_SYMBOLS)
+        filtered_symbols = filter_symbols_by_age_and_volume(market_summary, MIN_CONTRACT_AGE_DAYS, TOP_SYMBOLS_BY_VOLUME, ADDITIONAL_SYMBOLS, EXCLUDED_SYMBOLS)
 
         # 4️⃣ Update DB registry with filtered symbols
         update_symbol_registry(filtered_symbols)
