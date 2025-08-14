@@ -1,4 +1,5 @@
 from exchange.btse import get_current_price
+from decimal import Decimal
 
 def bool_to_int(value: bool) -> int:
     return 1 if value else 0
