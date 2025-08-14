@@ -2,6 +2,7 @@ import threading
 from datetime import datetime
 import sys
 import importlib
+import state
 
 # ===============================
 # Printing with timestamp
@@ -35,10 +36,8 @@ def lock_guard(name):
 # ===============================
 
 def debug(msg):
-    """
-    Prints a debug message with timestamp and [DEBUG] tag.
-    """
-    print_with_date(f"[DEBUG] {msg}")
+    if state.DEBUG_MODE:
+        print_with_date(f"[DEBUG] {msg}")
 
 # ===============================
 # Others

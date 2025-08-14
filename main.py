@@ -102,7 +102,7 @@ class PriceFetchError(Exception):
 getcontext().prec = 16
 
 # === DEBUG MODE ===
-DEBUG_MODE = False  # Set to False to disable debug logs
+state.DEBUG_MODE = False  # Set to False to disable debug logs
 
 def get_active_symbols_from_db():
     conn = sqlite3.connect(DB_PATH)
@@ -117,10 +117,6 @@ def get_active_symbols_from_db():
             active_symbols[symbol] = set()
         active_symbols[symbol].add(side)
     return active_symbols  # e.g. {'BTC-PERP': {'LONG'}, 'ETH-PERP': {'SHORT'}}
-
-def debug(msg):
-    if DEBUG_MODE:
-        print_with_date(f"[DEBUG] {msg}")
 
 # === Custom Print Function ===
 def print_with_date(msg, end='\n'):

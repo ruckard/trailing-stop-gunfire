@@ -13,3 +13,4 @@ DEFAULT_TRAILING_COUNT = None
 
 MIN_PRICE_INCREMENTS = None
 positions = {}
+DEBUG_MODE = None
