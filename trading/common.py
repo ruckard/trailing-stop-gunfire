@@ -51,7 +51,7 @@ def compute_contracts_from_prices(symbols, contract_sizes):
         price = Decimal(str(price))
         size = contract_sizes[symbol]
         notional = price * size
-        trail_percent = Decimal(str(TRAILING_STOPS_MAP.get(symbol, [1])[0])) / Decimal("100")
+        trail_percent = Decimal(str(state.TRAILING_STOPS_MAP.get(symbol, [1])[0])) / Decimal("100")
 
         prices[symbol] = price
         notional_per_contract[symbol] = notional
