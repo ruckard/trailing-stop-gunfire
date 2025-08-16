@@ -167,7 +167,7 @@ def place_all_positions(symbol, sides=("LONG", "SHORT")):
         print_with_date(f"[SKIP] Could not classify trend/range for {symbol}")
 
 def place_trend_positions(symbol, sides):
-    for i, callback in enumerate(TRAILING_STOPS_MAP[symbol]):
+    for i, callback in enumerate(state.TRAILING_STOPS_MAP[symbol]):
         #for side in ["LONG"]:
         for side in sides:
             pid = f"{side.lower()}-{i}"
