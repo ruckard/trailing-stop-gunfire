@@ -21,7 +21,7 @@ OHLCV_CACHE_TIMEOUT = timedelta(minutes=5)
 # ===============================
 
 def throttled_request(method, url, **kwargs):
-    with lock_guard(CLIENT_NAME):
+    with lock_guard(state.CLIENT_NAME):
         return requests.request(method, url, timeout=30, **kwargs)
 
 # ===============================
@@ -38,15 +38,6 @@ def generate_signature(api_secret, path, nonce, data_str):
         digestmod=hashlib.sha384
     ).hexdigest()
     return signature
-
-# Default client name is the directory name
-import os
-DEFAULT_CLIENT_NAME = os.path.basename(os.getcwd())
-try:
-    from override_config import CLIENT_NAME as OV_CLIENT_NAME
-except ImportError:
-    OV_CLIENT_NAME = None
-CLIENT_NAME = OV_CLIENT_NAME if OV_CLIENT_NAME is not None else DEFAULT_CLIENT_NAME
 
 # ===============================
 # Market Summary (Cached)

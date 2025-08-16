@@ -2,6 +2,9 @@ import threading
 from datetime import datetime
 import sys
 import importlib
+from contextlib import contextmanager
+
+from api_lock_client import api_lock_acquire_lock, api_lock_release_lock
 import state
 
 # ===============================
@@ -20,16 +23,13 @@ def print_with_date(msg):
 # Lock Guard for throttling
 # ===============================
 
-_locks = {}
-
-def lock_guard(name):
-    """
-    Context manager for a named lock.
-    Used to synchronize access across threads for throttled API calls.
-    """
-    if name not in _locks:
-        _locks[name] = threading.Lock()
-    return _locks[name]
+@contextmanager
+def lock_guard(client_id):
+    api_lock_acquire_lock(client_id)
+    try:
+        yield
+    finally:
+        api_lock_release_lock(client_id)
 
 # ===============================
 # Debug Logging

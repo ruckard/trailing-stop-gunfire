@@ -91,9 +91,9 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
     """
 
     if vol_bottom_percentile is None:
-        vol_bottom_percentile = VOL_BOTTOM_PERCENTILE
+        vol_bottom_percentile = state.VOL_BOTTOM_PERCENTILE
     if vol_top_percentile is None:
-        vol_top_percentile = VOL_TOP_PERCENTILE
+        vol_top_percentile = state.VOL_TOP_PERCENTILE
 
     trend_scores = {}
     atr_percents = {}
