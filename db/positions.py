@@ -2,6 +2,11 @@ import sqlite3
 import state
 import time
 
+from trading.common import (
+    bool_to_int,
+    int_to_bool
+)
+
 def init():
     conn = sqlite3.connect(state.DB_PATH)
     c = conn.cursor()

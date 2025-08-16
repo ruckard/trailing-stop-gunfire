@@ -23,12 +23,7 @@ from exchange import btse as exchange
 
 from trading.indicators import get_atr
 
-from trading.common import (
-    bool_to_int,
-    int_to_bool,
-    debug_latest_trades,
-    compute_contracts_from_prices,
-)
+from trading.common import compute_contracts_from_prices
 
 from trading.trend import (
     classify_trend_or_range_real,
