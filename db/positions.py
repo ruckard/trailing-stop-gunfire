@@ -45,7 +45,7 @@ def update_position(pid, info, symbol):
     else:
         opened_at = info["opened_at"]
 
-    conn = sqlite3.connect(state.state.DB_PATH)
+    conn = sqlite3.connect(state.DB_PATH)
     c = conn.cursor()
     c.execute('''
         INSERT INTO positions (pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, symbol, opened_at)
