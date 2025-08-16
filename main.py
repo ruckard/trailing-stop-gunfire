@@ -2,7 +2,6 @@ import time
 import hmac
 import hashlib
 import requests
-import json
 import os
 from datetime import datetime, timedelta, timezone
 import sqlite3
