@@ -246,8 +246,8 @@ def start_new_cycle(resume=False):
             long_top_number=MAXIMUM_LONG_TRADES_NUMBER,
             short_top_number=MAXIMUM_SHORT_TRADES_NUMBER,
             rank_type='EASY6',
-            vol_bottom_percentile = VOL_BOTTOM_PERCENTILE,
-            vol_top_percentile = VOL_TOP_PERCENTILE
+            vol_bottom_percentile = state.VOL_BOTTOM_PERCENTILE,
+            vol_top_percentile = state.VOL_TOP_PERCENTILE
         )
 
         # Handle case where no symbols are selected
