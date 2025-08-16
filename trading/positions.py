@@ -1,6 +1,7 @@
 import state
 from utils import print_with_date, debug
 from config import API_KEY, API_SECRET, BASE_URL
+import time
 
 def show_positions(symbol):
     print_with_date("[POSITIONS LOADED FROM DB]")

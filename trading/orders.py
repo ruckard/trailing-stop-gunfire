@@ -4,6 +4,8 @@ from utils import print_with_date, debug
 from exchange import btse as exchange
 from config import API_KEY, API_SECRET, BASE_URL
 
+import time
+
 import state
 import db.positions as positionsdb
 
