@@ -20,6 +20,19 @@ OHLCV_CACHE_TIMEOUT = timedelta(minutes=5)
 # Others
 # ===============================
 
+def retry_until_valid(fetch_func, *args, max_retries=None, wait_seconds=10, **kwargs):
+    attempt = 0
+    while True:
+        result = fetch_func(*args, **kwargs)
+        if result is not None:
+            return result
+        attempt += 1
+        print_with_date(f"[RETRY] {fetch_func.__name__} failed. Attempt {attempt}. Retrying in {wait_seconds}s...")
+        time.sleep(wait_seconds)
+        if max_retries is not None and attempt >= max_retries:
+            print_with_date(f"[RETRY] Max retries reached for {fetch_func.__name__}. Returning None.")
+            return None
+
 def throttled_request(method, url, **kwargs):
     with lock_guard(state.CLIENT_NAME):
         return requests.request(method, url, timeout=30, **kwargs)
