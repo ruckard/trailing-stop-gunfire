@@ -126,7 +126,7 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
         trend_scores[symbol] = score
 
         atr = get_atr(symbol)
-        price = exchange.retry_until_valid(get_current_price, symbol, wait_seconds=10)
+        price = exchange.retry_until_valid(exchange.get_current_price, symbol, wait_seconds=10)
         # TODO: Implement max_retries and check if price if None so that we can gracefully end this
 
         atr_percent = (Decimal(str(atr)) / Decimal(str(price))) * Decimal("100")
