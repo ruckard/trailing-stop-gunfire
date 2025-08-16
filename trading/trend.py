@@ -2,6 +2,7 @@ import time
 from exchange import btse as exchange
 from utils import print_with_date, debug
 import numpy as np
+import state
 
 TRENDRANGE_CACHE = {}
 
