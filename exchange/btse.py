@@ -48,10 +48,6 @@ except ImportError:
     OV_CLIENT_NAME = None
 CLIENT_NAME = OV_CLIENT_NAME if OV_CLIENT_NAME is not None else DEFAULT_CLIENT_NAME
 
-def throttled_request(method, url, **kwargs):
-    with lock_guard(CLIENT_NAME):
-        return requests.request(method, url, timeout=30, **kwargs)
-
 # ===============================
 # Market Summary (Cached)
 # ===============================

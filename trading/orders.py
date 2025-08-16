@@ -95,7 +95,7 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
         }
 
         debug(f"MARKET order payload: {market_body_str}")
-        market_response = throttled_request('POST', full_url, headers=market_headers, data=market_body_str)
+        market_response = exchange.throttled_request('POST', full_url, headers=market_headers, data=market_body_str)
         debug(f"MARKET order response status: {market_response.status_code}")
         debug(f"MARKET order response body: {market_response.text}")
         market_response.raise_for_status()
@@ -138,7 +138,7 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
         }
 
         debug(f"TRAILING STOP order payload: {trail_body_str}")
-        trail_response = throttled_request('POST', full_url, headers=trail_headers, data=trail_body_str)
+        trail_response = exchange.throttled_request('POST', full_url, headers=trail_headers, data=trail_body_str)
         debug(f"TRAILING STOP response status: {trail_response.status_code}")
         debug(f"TRAILING STOP response body: {trail_response.text}")
         trail_response.raise_for_status()

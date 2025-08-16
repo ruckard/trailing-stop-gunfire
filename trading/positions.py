@@ -50,7 +50,7 @@ def get_positions_status(symbol=None):
         debug(f"Request headers: {headers}")
 
         # Send GET request to the BTSE API to get positions
-        response = throttled_request('GET', url, headers=headers, params=params)
+        response = exchange.throttled_request('GET', url, headers=headers, params=params)
 
         debug(f"Response status code: {response.status_code}")
         debug(f"Response body: {response.text}")

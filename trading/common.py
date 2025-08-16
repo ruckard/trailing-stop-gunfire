@@ -30,7 +30,7 @@ def debug_latest_trades(symbol, limit=10):
             'includeOld': 'true',
             'count': limit  # Get latest N trades
         }
-        response = throttled_request("GET", url, headers=headers, params=params)
+        response = exchange.throttled_request("GET", url, headers=headers, params=params)
         response.raise_for_status()
         trades = response.json()
 
