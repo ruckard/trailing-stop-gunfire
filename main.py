@@ -172,8 +172,8 @@ CLIENT_NAME = safe_override_import_or_default("override_config", "CLIENT_NAME", 
 state.ADDITIONAL_SYMBOLS = safe_override_import_or_default("override_config", "ADDITIONAL_SYMBOLS", DEFAULT_ADDITIONAL_SYMBOLS)
 state.EXCLUDED_SYMBOLS = safe_override_import_or_default("override_config", "EXCLUDED_SYMBOLS", DEFAULT_EXCLUDED_SYMBOLS)
 
-CONTRACTS_MAP = {}
-CONTRACT_SIZES = {}
+state.CONTRACTS_MAP = {}
+state.CONTRACT_SIZES = {}
 state.MIN_PRICE_INCREMENTS = {}
 
 LAST_AVAILABLE_BALANCE = None
@@ -272,13 +272,12 @@ def start_new_cycle(resume=False):
             print_with_date("[CYCLE] No valid symbols found. Skipping cycle.")
             return None, None, None
 
-    global CONTRACT_SIZES, CONTRACTS_MAP
-    CONTRACT_SIZES = fetch_contract_sizes(symbols)
+    state.CONTRACT_SIZES = fetch_contract_sizes(symbols)
     state.MIN_PRICE_INCREMENTS = fetch_min_price_increments(symbols)
-    CONTRACTS_MAP, MAX_EXPECTED_LOSS = compute_contracts_from_prices(symbols, CONTRACT_SIZES)
+    state.CONTRACTS_MAP, MAX_EXPECTED_LOSS = compute_contracts_from_prices(symbols, CONTRACT_SIZES)
 
-    print_with_date(f"[CONTRACT_SIZES] {CONTRACT_SIZES}")
-    print_with_date(f"[CONTRACTS_MAP] {CONTRACTS_MAP}")
+    print_with_date(f"[CONTRACT_SIZES] {state.CONTRACT_SIZES}")
+    print_with_date(f"[CONTRACTS_MAP] {state.CONTRACTS_MAP}")
 
     if (not resume):
         print_with_date(f"[NEW] New cycle with LONG symbols: {long_symbols}")
