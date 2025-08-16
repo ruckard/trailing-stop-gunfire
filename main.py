@@ -99,7 +99,7 @@ def print_with_date(msg, end='\n'):
     check_sleep_start=True
 
 # === Import Configuration ===
-from config import API_KEY, API_SECRET, BASE_URL, DB_PATH
+from config import DB_PATH
 
 # === Default Values ===
 DEFAULT_SYMBOL_CONFIGS = {
