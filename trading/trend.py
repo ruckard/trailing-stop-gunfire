@@ -1,6 +1,9 @@
+import time
 from exchange import btse as exchange
 from utils import print_with_date, debug
 import numpy as np
+
+TRENDRANGE_CACHE = {}
 
 def classify_trend_or_range_real(symbol, lookback=50, threshold=0.0003):
     """
@@ -27,7 +30,7 @@ def classify_trend_or_range(symbol, lookback=50, threshold=0.0003):
 
     if symbol in TRENDRANGE_CACHE:
         ts, result = TRENDRANGE_CACHE[symbol]
-        if now - ts < TRENDRANGE_CACHE_TIMEOUT:
+        if now - ts < state.TRENDRANGE_CACHE_TIMEOUT:
             return result
         else:
             del TRENDRANGE_CACHE[symbol]

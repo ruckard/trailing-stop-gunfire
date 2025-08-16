@@ -192,8 +192,7 @@ state.MIN_PRICE_INCREMENTS = {}
 
 LAST_AVAILABLE_BALANCE = None
 
-TRENDRANGE_CACHE = {}  # symbol → (timestamp, result)
-TRENDRANGE_CACHE_TIMEOUT = 5 * 60  # 5 minutes
+state.TRENDRANGE_CACHE_TIMEOUT = 5 * 60  # 5 minutes
 
 MARKET_SUMMARY_CACHE = {
     "data": None,
