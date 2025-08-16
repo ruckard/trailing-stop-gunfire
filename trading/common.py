@@ -1,6 +1,7 @@
 from exchange import btse as exchange
 from decimal import Decimal
 import state
+from utils import print_with_date, debug
 
 def bool_to_int(value: bool) -> int:
     return 1 if value else 0
