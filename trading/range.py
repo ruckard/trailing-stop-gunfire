@@ -1,6 +1,7 @@
 import db.positions as positionsdb
 import state
 from utils import print_with_date, debug
+from exchange import btse as exchange
 
 def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
                           entry_offset_pct=0.5, take_profit_pct=0.7, stop_loss_pct=0.5):
@@ -20,7 +21,7 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
 
     contracts = CONTRACTS_MAP.get(symbol, 1)
 
-    price = get_current_price(symbol)
+    price = exchange.get_current_price(symbol)
     if price is None:
         print_with_date(f"[RANGE STRATEGY] Failed to fetch price for {symbol}")
         return

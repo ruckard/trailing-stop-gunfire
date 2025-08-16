@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from exchange.btse import fetch_top_symbols_by_volume, update_symbol_settings, get_current_price
+from exchange import btse as exchange
 from utils import print_with_date, debug
 from decimal import Decimal
 import numpy as np
@@ -46,7 +46,7 @@ def setup_symbol_modes():
     new_symbols = knownsymbolsdb.get_new_symbols()
 
     for sym in new_symbols:
-        update_symbol_settings(sym)  # run the actual setup
+        exchange.update_symbol_settings(sym)  # run the actual setup
         print_with_date(f"[SETUP] {sym}: Setting up trading mode → status = 'ready'")
         set_symbol_as_ready(sym)
 
@@ -65,7 +65,7 @@ def filter_symbols_by_age_and_volume(market_summary):
     aged_symbol_names = set(aged_symbols)
 
     # Fetch top volume symbols (no filtering parameter)
-    top_symbols = fetch_top_symbols_by_volume(limit=state.TOP_SYMBOLS_BY_VOLUME)
+    top_symbols = exchange.fetch_top_symbols_by_volume(limit=state.TOP_SYMBOLS_BY_VOLUME)
 
     # Keep only aged symbols from the top volume list
     filtered_top_symbols = [s for s in top_symbols if s in aged_symbol_names]
@@ -126,7 +126,7 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
         trend_scores[symbol] = score
 
         atr = get_atr(symbol)
-        price = get_current_price(symbol)
+        price = exchange.get_current_price(symbol)
         atr_percent = (Decimal(str(atr)) / Decimal(str(price))) * Decimal("100")
         atr_percents[symbol] = atr_percent
 

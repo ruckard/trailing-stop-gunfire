@@ -1,4 +1,5 @@
 from utils import print_with_date, debug
+from exchange import btse as exchange
 
 # === Win Check ===
 def is_win_from_trade(realized_pnl):
@@ -12,7 +13,7 @@ def is_breakeven_from_trade(symbol, info, closing_price):
     trail_value = info["trail_value"]
     breakeven_percentage = 10
 
-    current_price = get_current_price(symbol)
+    current_price = exchange.get_current_price(symbol)
     if not current_price:
         print_with_date("[ERROR] Failed to get current price.")
         raise PriceFetchError("[ERROR] Failed to get current price for breakeven check.")

@@ -20,19 +20,7 @@ import state
 import db.positions as positionsdb
 import db.knownsymbols as knownsymbolsdb
 
-from exchange.btse import (
-    get_market_summary,
-    fetch_top_symbols_by_volume,
-    fetch_contract_sizes,
-    fetch_min_price_increments,
-    get_current_price,
-    place_range_order,
-    close_position,
-    update_leverage,
-    update_position_mode,
-    update_leverage_again,
-    update_symbol_settings
-)
+from exchange import btse as exchange
 
 from trading.indicators import get_atr
 
@@ -194,7 +182,7 @@ def prune_market_summary_cache():
         MARKET_SUMMARY_CACHE["timestamp"] = None
 
 def get_final_symbol_list():
-    top_symbols = fetch_top_symbols_by_volume(limit=TOP_SYMBOLS_BY_VOLUME)
+    top_symbols = exchange.fetch_top_symbols_by_volume(limit=TOP_SYMBOLS_BY_VOLUME)
 
     # Include additional symbols
     combined = top_symbols + ADDITIONAL_SYMBOLS
@@ -239,7 +227,7 @@ def start_new_cycle(resume=False):
         knownsymbolsdb.init()
 
         # 2️⃣ Fetch market summary from BTSE
-        market_summary = get_market_summary()
+        market_summary = exchange.get_market_summary()
         if market_summary is None:
             return None, None, None
 
@@ -272,8 +260,8 @@ def start_new_cycle(resume=False):
             print_with_date("[CYCLE] No valid symbols found. Skipping cycle.")
             return None, None, None
 
-    state.CONTRACT_SIZES = fetch_contract_sizes(symbols)
-    state.MIN_PRICE_INCREMENTS = fetch_min_price_increments(symbols)
+    state.CONTRACT_SIZES = exchange.fetch_contract_sizes(symbols)
+    state.MIN_PRICE_INCREMENTS = exchange.fetch_min_price_increments(symbols)
     state.CONTRACTS_MAP, MAX_EXPECTED_LOSS = compute_contracts_from_prices(symbols, state.CONTRACT_SIZES)
 
     print_with_date(f"[CONTRACT_SIZES] {state.CONTRACT_SIZES}")

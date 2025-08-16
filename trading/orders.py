@@ -1,6 +1,7 @@
 from . import trend
 from decimal import Decimal
 from utils import print_with_date, debug
+from exchange import btse as exchange
 
 import state
 import db.positions as positionsdb
@@ -47,7 +48,7 @@ def update_trailing_stops_for_symbol(symbol):
 # === Place Trailing Stop Order on BTSE ===
 def place_trailing_stop(symbol, position_side, callback_rate, contracts):
     try:
-        current_price = get_current_price(symbol)
+        current_price = exchange.get_current_price(symbol)
         if not current_price:
             print_with_date("[ERROR] Failed to get current price.")
             return None, None, None, None, None
