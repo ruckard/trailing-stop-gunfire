@@ -199,6 +199,12 @@ def place_trend_positions(symbol, sides):
 # === Check and Manage Positions ===
 def check_positions(symbol):
     all_closed = True
+
+    # Return immediately if symbol is not in positions
+    if symbol not in state.positions:
+        debug(f"[check_positions] No positions for symbol {symbol}")
+        return all_closed  # All "closed" by default
+
     for pid, info in state.positions[symbol].items():
         debug(f"[check_positions] Checking... {symbol} {pid}")
         if not info["active"]:
