@@ -32,17 +32,17 @@ def update_trailing_stops_for_symbol(symbol):
         return
 
     trailing_start = Decimal(str(trailing_start))  # Ensure Decimal type
-    step_multiplier = Decimal(str(cfg.get("TRAILING_STEP_MULTIPLIER", TRAILING_STEP_MULTIPLIER_DEFAULT)))
+    step_multiplier = Decimal(str(cfg.get("TRAILING_STEP_MULTIPLIER", state.DEFAULT_TRAILING_STEP_MULTIPLIER)))
 
     trailing_step = trailing_start * step_multiplier
-    trailing_count = cfg.get("TRAILING_COUNT", TRAILING_COUNT_DEFAULT)
+    trailing_count = cfg.get("TRAILING_COUNT", state.DEFAULT_TRAILING_COUNT)
 
-    TRAILING_STOPS_MAP[symbol] = [
+    state.TRAILING_STOPS_MAP[symbol] = [
         round(trailing_start + i * trailing_step, 2)
         for i in range(trailing_count)
     ]
 
-    print_with_date(f"[UPDATED TRAILING STOPS] {symbol}: {TRAILING_STOPS_MAP[symbol]}")
+    print_with_date(f"[UPDATED TRAILING STOPS] {symbol}: {state.TRAILING_STOPS_MAP[symbol]}")
 
 # === Place Trailing Stop Order on BTSE ===
 def place_trailing_stop(symbol, position_side, callback_rate, contracts):
