@@ -269,7 +269,7 @@ def start_new_cycle(resume=False):
         # 6️⃣ Get only 'ready' symbols for trading
         base_symbols = knownsymbolsdb.get_ready_symbols()
         # Forget about old trades if we are starting a new cycle
-        positions = {}
+        state.positions = {}
         for symbol in base_symbols:
             positionsdb.clear_positions(symbol)
         symbols, long_symbols, short_symbols = filter_symbols_by_rank(
@@ -303,10 +303,10 @@ def start_new_cycle(resume=False):
             print_with_date(f"[CLASSIFY] {symbol} : {trend_type.upper()}")
 
     for symbol in symbols:
-        if symbol not in positions:
-            positions[symbol] = {}
+        if symbol not in state.positions:
+            state.positions[symbol] = {}
         positionsdb.load_positions(symbol)
-        if not positions[symbol] and not resume:
+        if not state.positions[symbol] and not resume:
             update_trailing_stops_for_symbol(symbol)
             if symbol in long_symbols:
                 place_all_positions(symbol, sides=("LONG",))
