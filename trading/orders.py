@@ -157,7 +157,7 @@ def place_all_positions(symbol, sides=("LONG", "SHORT")):
     print_with_date(f"[STARTING NEW {symbol} CYCLE]")
     state.positions[symbol].clear()
     positionsdb.clear_positions(symbol)
-    trend_type = classify_trend_or_range(symbol)
+    trend_type = trend.classify_trend_or_range(symbol)
 
     if trend_type == "trend":
         place_trend_positions(symbol, sides)
