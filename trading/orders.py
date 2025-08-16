@@ -156,7 +156,7 @@ def place_all_positions(symbol, sides=("LONG", "SHORT")):
     global CONTRACTS_MAP
     print_with_date(f"[STARTING NEW {symbol} CYCLE]")
     state.positions[symbol].clear()
-    clear_positions(symbol)
+    positionsdb.clear_positions(symbol)
     trend_type = classify_trend_or_range(symbol)
 
     if trend_type == "trend":
