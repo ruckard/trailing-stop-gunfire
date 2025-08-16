@@ -265,8 +265,6 @@ def start_new_cycle(resume=False):
             print_with_date(f"[CLASSIFY] {symbol} : {trend_type.upper()}")
 
     for symbol in symbols:
-        if symbol not in state.positions:
-            state.positions[symbol] = {}
         positionsdb.load_positions(symbol)
         if not state.positions[symbol] and not resume:
             update_trailing_stops_for_symbol(symbol)
