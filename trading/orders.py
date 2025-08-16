@@ -8,6 +8,7 @@ import time, json
 
 import state
 import db.positions as positionsdb
+from trading.positions import get_position_status
 
 def build_trailing_stops_map():
     result = {}

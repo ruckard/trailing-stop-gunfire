@@ -45,13 +45,7 @@ from trading.range import (
     place_range_positions,
 )
 
-from trading.positions import (
-    show_positions,
-    get_positions_status,
-    get_position_status,
-    get_trade_by_closing_order_id,
-    get_trade_by_opening_order_id,
-)
+from trading.positions import show_positions
 
 from trading.orders import (
     build_trailing_stops_map,
