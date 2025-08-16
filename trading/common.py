@@ -2,9 +2,9 @@ from exchange import btse as exchange
 from decimal import Decimal
 import state
 from utils import print_with_date, debug
+
 from exchange import btse as exchange
 from config import API_KEY, API_SECRET, BASE_URL
-
 import time, json
 
 def bool_to_int(value: bool) -> int:
@@ -18,7 +18,7 @@ def debug_latest_trades(symbol, limit=10):
         url_path = '/api/v2.2/user/trade_history'
         url = BASE_URL + url_path
         nonce = str(int(time.time() * 1000))
-        sig = generate_signature(API_SECRET, url_path, nonce, "")
+        sig = exchange.generate_signature(API_SECRET, url_path, nonce, "")
         headers = {
             'request-api': API_KEY,
             'request-nonce': nonce,

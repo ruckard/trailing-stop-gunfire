@@ -1,6 +1,7 @@
 import state
 from utils import print_with_date, debug
 
+from exchange import btse as exchange
 from config import API_KEY, API_SECRET, BASE_URL
 import time, json
 
@@ -30,7 +31,7 @@ def get_positions_status(symbol=None):
         # Signature generation (use the correct method for GET requests)
         nonce = str(int(time.time() * 1000))  # Generate nonce
         body_str = ""
-        signature = generate_signature(API_SECRET, endpoint_path, nonce, body_str)
+        signature = exchange.generate_signature(API_SECRET, endpoint_path, nonce, body_str)
 
         # Headers for authentication
         headers = {
@@ -111,7 +112,7 @@ def get_trade_by_closing_order_id(symbol, order_id):
         url_path = '/api/v2.2/user/trade_history'
         url = BASE_URL + url_path
         nonce = str(int(time.time() * 1000))
-        sig = generate_signature(API_SECRET, url_path, nonce, "")
+        sig = exchange.generate_signature(API_SECRET, url_path, nonce, "")
         headers = {
             'request-api': API_KEY,
             'request-nonce': nonce,
@@ -139,7 +140,7 @@ def get_trade_by_opening_order_id(symbol, order_id):
         url_path = '/api/v2.2/user/trade_history'
         url = BASE_URL + url_path
         nonce = str(int(time.time() * 1000))
-        sig = generate_signature(API_SECRET, url_path, nonce, "")
+        sig = exchange.generate_signature(API_SECRET, url_path, nonce, "")
         headers = {
             'request-api': API_KEY,
             'request-nonce': nonce,

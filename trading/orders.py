@@ -1,8 +1,8 @@
 from . import trend
 from decimal import Decimal
 from utils import print_with_date, debug
-from exchange import btse as exchange
 
+from exchange import btse as exchange
 from config import API_KEY, API_SECRET, BASE_URL
 import time, json
 
@@ -86,7 +86,7 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
             "positionMode": "ISOLATED"
         }
         market_body_str = json.dumps(market_order, separators=(',', ':'))
-        market_sig = generate_signature(API_SECRET, url_path, nonce, market_body_str)
+        market_sig = exchange.generate_signature(API_SECRET, url_path, nonce, market_body_str)
         market_headers = {
             'request-api': API_KEY,
             'request-nonce': nonce,
@@ -129,7 +129,7 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
             "positionId": position_id
         }
         trail_body_str = json.dumps(trail_order, separators=(',', ':'))
-        trail_sig = generate_signature(API_SECRET, url_path, nonce, trail_body_str)
+        trail_sig = exchange.generate_signature(API_SECRET, url_path, nonce, trail_body_str)
         trail_headers = {
             'request-api': API_KEY,
             'request-nonce': nonce,
