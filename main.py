@@ -201,66 +201,6 @@ MARKET_SUMMARY_CACHE = {
 }
 MARKET_SUMMARY_CACHE_TIMEOUT = timedelta(hours=1)
 
-def get_available_balance(currency="USDT"):
-    """
-    Query the CROSS wallet and return the available balance for the given currency.
-    Prints balance change with color.
-    """
-    global LAST_AVAILABLE_BALANCE
-
-    try:
-        url_path = "/api/v2.2/user/wallet"
-        url = BASE_URL + url_path
-
-        nonce = str(int(time.time() * 1000))
-        sig = generate_signature(API_SECRET, url_path, nonce, "")
-
-        headers = {
-            'request-api': API_KEY,
-            'request-nonce': nonce,
-            'request-sign': sig
-        }
-
-        response = throttled_request("GET", url, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-
-        cross_wallet = next((w for w in data if w.get("wallet") == "CROSS@"), None)
-        if not cross_wallet:
-            print_with_date("[BALANCE] No CROSS@ wallet found.")
-            return Decimal("0")
-
-        available_balance = Decimal(str(cross_wallet.get("availableBalance", 0)))
-
-        # Compute change
-        balance_change = None
-        if LAST_AVAILABLE_BALANCE is not None:
-            balance_change = available_balance - LAST_AVAILABLE_BALANCE
-
-        # Save for next call
-        LAST_AVAILABLE_BALANCE = available_balance
-
-        # Format change with color
-        change_str = ""
-        if balance_change is not None:
-            if balance_change > 0:
-                change_str = f"\033[92mChange: +{balance_change:.2f} {currency}\033[0m"
-            elif balance_change < 0:
-                change_str = f"\033[91mChange: {balance_change:.2f} {currency}\033[0m"
-            else:
-                change_str = f"Change: 0.00 {currency}"
-
-        if change_str:
-            print_with_date(f"[BALANCE] Available {currency}: {available_balance} | {change_str}")
-        else:
-            print_with_date(f"[BALANCE] Available {currency}: {available_balance}")
-
-        return available_balance
-
-    except Exception as e:
-        print_with_date(f"[BALANCE ERROR] {e}")
-        return Decimal("0")
-
 def prune_market_summary_cache():
     if MARKET_SUMMARY_CACHE["timestamp"] is None:
         return

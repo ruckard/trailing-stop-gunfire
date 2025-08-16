@@ -1,4 +1,4 @@
-from exchange.btse import get_current_price
+from exchange import btse as exchange
 from decimal import Decimal
 import state
 
@@ -46,7 +46,7 @@ def compute_contracts_from_prices(symbols, contract_sizes):
     per_contract_losses = {}
 
     for symbol in symbols:
-        price = get_current_price(symbol)
+        price = exchange.get_current_price(symbol)
         if price is None or symbol not in contract_sizes:
             continue
         price = Decimal(str(price))
@@ -61,7 +61,7 @@ def compute_contracts_from_prices(symbols, contract_sizes):
     if not per_contract_losses:
         return {}, Decimal("0")
 
-    available_usdt = get_available_balance("USDT")
+    available_usdt = exchange.get_available_balance("USDT")
     target_budget = Decimal(str(available_usdt)) * Decimal("0.8")
 
     # Start with 1 contract for each symbol
