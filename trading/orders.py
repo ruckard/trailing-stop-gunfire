@@ -206,7 +206,7 @@ def check_positions(symbol):
         opened_at = info.get("opened_at")
         if opened_at:
             elapsed_minutes = (time.time() - opened_at) / 60
-            if elapsed_minutes >= TRADE_MAX_CANDLES * CANDLE_INTERVAL_MINUTES:
+            if elapsed_minutes >= state.TRADE_MAX_CANDLES * CANDLE_INTERVAL_MINUTES:
                 print_with_date(f"[TIMEOUT] Closing {symbol} {pid} after {elapsed_minutes:.1f} minutes.")
                 # Code to close the position immediately:
                 close_position(symbol, info)  # You'll need to implement or call your existing close logic
