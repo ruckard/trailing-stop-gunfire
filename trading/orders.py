@@ -1,5 +1,6 @@
 from . import trend
 from decimal import Decimal
+from utils import print_with_date, debug
 
 import state
 import db.positions as positionsdb

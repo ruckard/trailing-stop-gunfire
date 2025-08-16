@@ -1,5 +1,6 @@
 import db.positions as positionsdb
 import state
+from utils import print_with_date, debug
 
 def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
                           entry_offset_pct=0.5, take_profit_pct=0.7, stop_loss_pct=0.5):

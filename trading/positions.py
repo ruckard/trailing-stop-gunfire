@@ -1,4 +1,5 @@
 import state
+from utils import print_with_date, debug
 
 def show_positions(symbol):
     print_with_date("[POSITIONS LOADED FROM DB]")
