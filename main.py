@@ -274,7 +274,7 @@ def start_new_cycle(resume=False):
 
     state.CONTRACT_SIZES = fetch_contract_sizes(symbols)
     state.MIN_PRICE_INCREMENTS = fetch_min_price_increments(symbols)
-    state.CONTRACTS_MAP, MAX_EXPECTED_LOSS = compute_contracts_from_prices(symbols, CONTRACT_SIZES)
+    state.CONTRACTS_MAP, MAX_EXPECTED_LOSS = compute_contracts_from_prices(symbols, state.CONTRACT_SIZES)
 
     print_with_date(f"[CONTRACT_SIZES] {state.CONTRACT_SIZES}")
     print_with_date(f"[CONTRACTS_MAP] {state.CONTRACTS_MAP}")
