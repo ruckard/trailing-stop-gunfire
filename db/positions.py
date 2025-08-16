@@ -76,12 +76,6 @@ def load_positions(symbol):
     c.execute(f"SELECT pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, opened_at FROM positions WHERE symbol = \"{symbol}\"")
     rows = c.fetchall()
     conn.close()
-
-    # TODO: Double-check if this does not have any side effect
-    # TODO: Maybe the original code ensured this was never needed in the first place.
-    if symbol not in state.positions or not isinstance(state.positions[symbol], dict):
-        state.positions[symbol] = {}
-
     for pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, opened_at in rows:
         state.positions[symbol][pid] = {
             "position_id": position_id,
