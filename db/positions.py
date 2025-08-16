@@ -89,3 +89,16 @@ def clear_positions(symbol):
     conn.commit()
     conn.close()
 
+def get_active_symbols():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT DISTINCT symbol, side FROM positions WHERE active = 1")
+    rows = c.fetchall()
+    conn.close()
+
+    active_symbols = {}
+    for symbol, side in rows:
+        if symbol not in active_symbols:
+            active_symbols[symbol] = set()
+        active_symbols[symbol].add(side)
+    return active_symbols  # e.g. {'BTC-PERP': {'LONG'}, 'ETH-PERP': {'SHORT'}}

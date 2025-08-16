@@ -104,20 +104,6 @@ getcontext().prec = 16
 # === DEBUG MODE ===
 state.DEBUG_MODE = False  # Set to False to disable debug logs
 
-def get_active_symbols_from_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT DISTINCT symbol, side FROM positions WHERE active = 1")
-    rows = c.fetchall()
-    conn.close()
-
-    active_symbols = {}
-    for symbol, side in rows:
-        if symbol not in active_symbols:
-            active_symbols[symbol] = set()
-        active_symbols[symbol].add(side)
-    return active_symbols  # e.g. {'BTC-PERP': {'LONG'}, 'ETH-PERP': {'SHORT'}}
-
 # === Custom Print Function ===
 def print_with_date(msg, end='\n'):
     timestamp = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
@@ -242,7 +228,7 @@ state.positions = {}
 
 def start_new_cycle(resume=False):
     if resume:
-        active_symbols = get_active_symbols_from_db()
+        active_symbols = positionsdb.get_active_symbols()
         symbols = list(active_symbols.keys())
         long_symbols = [s for s, sides in active_symbols.items() if "LONG" in sides]
         short_symbols = [s for s, sides in active_symbols.items() if "SHORT" in sides]
@@ -321,7 +307,7 @@ def start_new_cycle(resume=False):
 def run_main_loop():
     positionsdb.init()
 
-    active_symbols = get_active_symbols_from_db()
+    active_symbols = positionsdb.get_active_symbols()
     resume_cycle = bool(active_symbols)
 
     # Ensure we have valid symbols before entering the main loop
