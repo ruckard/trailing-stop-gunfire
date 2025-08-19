@@ -9,6 +9,8 @@ import time, json
 import state
 import db.positions as positionsdb
 from trading.positions import get_position_status
+from trading.trend import place_trend_positions
+from trading.range import place_range_positions
 
 def build_trailing_stops_map():
     result = {}
@@ -170,32 +172,6 @@ def place_all_positions(symbol, sides=("LONG", "SHORT")):
     else:
         print_with_date(f"[SKIP] Could not classify trend/range for {symbol}")
 
-def place_trend_positions(symbol, sides):
-    for i, callback in enumerate(state.TRAILING_STOPS_MAP[symbol]):
-        #for side in ["LONG"]:
-        for side in sides:
-            pid = f"{side.lower()}-{i}"
-            contracts = state.CONTRACTS_MAP.get(symbol, 1)
-            result = place_trailing_stop(symbol, side, callback, contracts)
-            # Check if the result is valid (i.e., position_id and opening_order_id and closing_order_id are returned)
-            if result is None or result[0] is None or result[1] is None or result[2] is None:
-                print_with_date(f"[ERROR] Failed to place trailing stop for {symbol} {side} at {callback}%")
-                continue
-            pos_id, opening_order_id, closing_order_id, opening_price, trail_value = result
-            state.positions[symbol][pid] = {
-                "position_id": pos_id,
-                "opening_order_id": opening_order_id,
-                "closing_order_id": closing_order_id,
-                "side": side,
-                "callback": callback,
-                "active": True,
-                "opening_price" : opening_price,
-                "trail_value" : trail_value,
-                "opened_at": time.time()
-            }
-            position_info = state.positions[symbol][pid]
-            positionsdb.update_position(pid, position_info, symbol)
-
 # === Check and Manage Positions ===
 def check_positions(symbol):
     all_closed = True
@@ -216,7 +192,7 @@ def check_positions(symbol):
             if elapsed_minutes >= state.TRADE_MAX_CANDLES * state.CANDLE_INTERVAL_MINUTES:
                 print_with_date(f"[TIMEOUT] Closing {symbol} {pid} after {elapsed_minutes:.1f} minutes.")
                 # Code to close the position immediately:
-                close_position(symbol, info)  # You'll need to implement or call your existing close logic
+                exchange.close_position(symbol, info)  # You'll need to implement or call your existing close logic
                 info["active"] = False
                 positionsdb.update_position(pid, info, symbol)
                 continue

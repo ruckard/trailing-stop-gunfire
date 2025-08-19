@@ -1,3 +1,6 @@
+import math
+import time
+
 import db.positions as positionsdb
 import state
 from utils import print_with_date, debug
@@ -9,7 +12,7 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
     Place range-trading orders: enter near support/resistance with tight SL/TP.
     """
 
-    df = fetch_4h_ohlcv(symbol)
+    df = exchange.fetch_4h_ohlcv(symbol)
     if df is None or df.empty or len(df) < lookback:
         print_with_date(f"[RANGE STRATEGY] Insufficient data for {symbol}")
         return
@@ -19,7 +22,7 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
     low = recent['low'].min()
     range_mid = (high + low) / 2
 
-    contracts = CONTRACTS_MAP.get(symbol, 1)
+    contracts = state.CONTRACTS_MAP.get(symbol, 1)
 
     price = exchange.get_current_price(symbol)
     if price is None:
@@ -41,9 +44,9 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
             continue
 
         # Ensure price decimal scale is the right one
-        entry_price = round(entry_price, int(-math.log10(MIN_PRICE_INCREMENTS[symbol])))
-        take_profit = round(take_profit, int(-math.log10(MIN_PRICE_INCREMENTS[symbol])))
-        stop_loss = round(stop_loss, int(-math.log10(MIN_PRICE_INCREMENTS[symbol])))
+        entry_price = round(entry_price, int(-math.log10(state.MIN_PRICE_INCREMENTS[symbol])))
+        take_profit = round(take_profit, int(-math.log10(state.MIN_PRICE_INCREMENTS[symbol])))
+        stop_loss = round(stop_loss, int(-math.log10(state.MIN_PRICE_INCREMENTS[symbol])))
 
         cl_order_id = f"{symbol}-range-{side.lower()}-{i}-{int(time.time())}"
 
@@ -53,7 +56,7 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
         )
 
         # You may need to customize this to your real API structure:
-        result = place_range_order(symbol=symbol,
+        result = exchange.place_range_order(symbol=symbol,
                           position_side=order_side,
                           contracts=contracts,
                           entry_price=entry_price,
