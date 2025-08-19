@@ -83,7 +83,7 @@ def filter_symbols_by_age_and_volume(market_summary):
 
     return final
 
-def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_type='EASY6',
+def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_type='EASY7',
                            vol_bottom_percentile=None, vol_top_percentile=None):
     """
     Rank and filter symbols based on trend score and normalized ATR%.
@@ -116,6 +116,8 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
             score = trend.calculate_easy_trend5_with_rsi(symbol)
         elif rank_type == 'EASY6':
             score = trend.calculate_easy_trend6_with_rsi(symbol)
+        elif rank_type == 'EASY7':
+            score = trend.calculate_easy_trend7_with_rsi(symbol)
         else:
             raise ValueError(f"Unsupported rank_type: {rank_type}")
 
