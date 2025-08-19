@@ -4,6 +4,7 @@ from utils import print_with_date, debug
 import numpy as np
 import state
 import db.positions as positionsdb
+from trading.orders import place_trailing_stop
 
 TRENDRANGE_CACHE = {}
 
