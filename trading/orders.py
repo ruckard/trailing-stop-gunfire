@@ -201,7 +201,7 @@ def check_positions(symbol):
     all_closed = True
 
     # Return immediately if symbol is not in positions
-    if not (any(pos["symbol"] == "IOTX-PERP" for pos in state.positions)):
+    if (not (symbol in state.positions)):
         debug(f"[check_positions] No positions for symbol {symbol}")
         return all_closed  # All "closed" by default
 
