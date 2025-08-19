@@ -9,7 +9,7 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
     Place range-trading orders: enter near support/resistance with tight SL/TP.
     """
 
-    df = fetch_4h_ohlcv(symbol)
+    df = exchange.fetch_4h_ohlcv(symbol)
     if df is None or df.empty or len(df) < lookback:
         print_with_date(f"[RANGE STRATEGY] Insufficient data for {symbol}")
         return
