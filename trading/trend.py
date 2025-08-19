@@ -4,11 +4,12 @@ from utils import print_with_date, debug
 import numpy as np
 import state
 import db.positions as positionsdb
-from trading.orders import place_trailing_stop
 
 TRENDRANGE_CACHE = {}
 
 def place_trend_positions(symbol, sides):
+    # TODO: Maybe improve it so that we don't have a lazy import
+    from trading.orders import place_trailing_stop
     for i, callback in enumerate(state.TRAILING_STOPS_MAP[symbol]):
         #for side in ["LONG"]:
         for side in sides:
