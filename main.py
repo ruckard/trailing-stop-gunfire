@@ -80,12 +80,6 @@ getcontext().prec = 16
 # === DEBUG MODE ===
 state.DEBUG_MODE = False  # Set to False to disable debug logs
 
-# === Custom Print Function ===
-def print_with_date(msg, end='\n'):
-    timestamp = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
-    print(f"{timestamp} {msg}", end=end)
-    check_sleep_start=True
-
 # === Import Configuration ===
 from config import DB_PATH
 
@@ -295,15 +289,14 @@ def run_main_loop():
             time.sleep(600)
             resume_cycle = False  # ensure it's not treated as resume on next try
 
-    global check_sleep_start
-    check_sleep_start = True
+    state.check_sleep_start = True
 
     while True:
         try:
-            if check_sleep_start:
+            if state.check_sleep_start:
                 print_with_date("", end='')
             print("C", end='', flush=True)
-            check_sleep_start = False
+            state.check_sleep_start = False
             time.sleep(1)
 
             batch_all_closed = True
@@ -328,7 +321,7 @@ def run_main_loop():
         except Exception as e:
             print_with_date(f"[UNHANDLED EXCEPTION] {e}. Traceback: {traceback.format_exc()} Retrying in 5 minutes.")
         print("S", end='', flush=True)
-        check_sleep_start = False
+        state.check_sleep_start = False
         time.sleep(5 * 60)
 
 if __name__ == "__main__":

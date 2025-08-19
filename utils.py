@@ -11,13 +11,10 @@ import state
 # Printing with timestamp
 # ===============================
 
-def print_with_date(msg):
-    """
-    Prints a message prefixed with a UTC timestamp in [YYYY-MM-DD HH:MM:SS] format.
-    """
-    now_str = datetime.utcnow().strftime("[%Y-%m-%d %H:%M:%S]")
-    print(f"{now_str} {msg}")
-    sys.stdout.flush()
+def print_with_date(msg, end='\n'):
+    timestamp = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
+    print(f"{timestamp} {msg}", end=end)
+    state.check_sleep_start=True
 
 # ===============================
 # Lock Guard for throttling

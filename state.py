@@ -34,3 +34,4 @@ RANGE_STOP_LOSS_PCT = None
 API_DELAY_MS = None
 ATR_MA_PERIOD = None
 CLIENT_NAME = None
+check_sleep_start = None
