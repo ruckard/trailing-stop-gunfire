@@ -48,7 +48,10 @@ def update_position(pid, info, symbol):
     if "callback" not in info:
         callback = 0.0
     else:
-        callback = info["callback"]
+        if info["callback"] is not None:
+            callback = info["callback"]
+        else:
+            callback = 0.0
 
     # Undefined opened_at workaround
     if "opened_at" not in info:
