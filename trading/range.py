@@ -3,6 +3,8 @@ import state
 from utils import print_with_date, debug
 from exchange import btse as exchange
 
+from utils import debug_positions_structure
+
 def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
                           entry_offset_pct=0.5, take_profit_pct=0.7, stop_loss_pct=0.5):
     """
@@ -79,3 +81,6 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
             "opened_at": time.time()
         }
         positionsdb.update_position(pid, state.positions[symbol][pid], symbol)
+
+    print_with_date("DEBUG_POSITIONS_STRUCTURE - trading/range.py - place_range_positions")
+    debug_positions_structure()

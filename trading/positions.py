@@ -5,6 +5,8 @@ from exchange import btse as exchange
 from config import API_KEY, API_SECRET, BASE_URL
 import time, json
 
+from utils import debug_positions_structure
+
 def show_positions(symbol):
     print_with_date("[POSITIONS LOADED FROM DB]")
     if not state.positions[symbol]:
@@ -87,6 +89,10 @@ def get_position_status(position_id):
     try:
         # Get all positions first
         state.positions = get_positions_status()
+
+        print_with_date("DEBUG_POSITIONS_STRUCTURE - trading/positions.py - get_position_status")
+        debug_positions_structure()
+
         debug(f"Checking positions for position_id: {position_id}")
         debug(f"All positions: {state.positions}")
 
