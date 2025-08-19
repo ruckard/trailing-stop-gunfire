@@ -1,3 +1,6 @@
+import math
+import time
+
 import db.positions as positionsdb
 import state
 from utils import print_with_date, debug
@@ -41,9 +44,9 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
             continue
 
         # Ensure price decimal scale is the right one
-        entry_price = round(entry_price, int(-math.log10(MIN_PRICE_INCREMENTS[symbol])))
-        take_profit = round(take_profit, int(-math.log10(MIN_PRICE_INCREMENTS[symbol])))
-        stop_loss = round(stop_loss, int(-math.log10(MIN_PRICE_INCREMENTS[symbol])))
+        entry_price = round(entry_price, int(-math.log10(state.MIN_PRICE_INCREMENTS[symbol])))
+        take_profit = round(take_profit, int(-math.log10(state.MIN_PRICE_INCREMENTS[symbol])))
+        stop_loss = round(stop_loss, int(-math.log10(state.MIN_PRICE_INCREMENTS[symbol])))
 
         cl_order_id = f"{symbol}-range-{side.lower()}-{i}-{int(time.time())}"
 
