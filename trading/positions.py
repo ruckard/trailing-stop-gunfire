@@ -124,7 +124,7 @@ def get_trade_by_closing_order_id(symbol, order_id):
             'clOrderID': order_id,
             'includeOld': 'true'
         }
-        response = throttled_request("GET", url, headers=headers, params=params)
+        response = exchange.throttled_request("GET", url, headers=headers, params=params)
         response.raise_for_status()
         data = response.json()
         debug(f"closing orderID: {order_id}")
@@ -152,7 +152,7 @@ def get_trade_by_opening_order_id(symbol, order_id):
             'orderID': order_id,
             'includeOld': 'true'
         }
-        response = throttled_request("GET", url, headers=headers, params=params)
+        response = exchange.throttled_request("GET", url, headers=headers, params=params)
         response.raise_for_status()
         data = response.json()
         debug(f"opening orderID: {order_id}")
