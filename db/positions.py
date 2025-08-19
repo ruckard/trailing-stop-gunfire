@@ -44,6 +44,12 @@ def update_position(pid, info, symbol):
     else:
         trail_value = info["trail_value"]
 
+    # Undefined callback workaround
+    if "callback" not in info:
+        callback = 0.0
+    else:
+        callback = info["callback"]
+
     # Undefined opened_at workaround
     if "opened_at" not in info:
         opened_at = time.time()
@@ -66,7 +72,7 @@ def update_position(pid, info, symbol):
             trail_value=excluded.trail_value,
             symbol=excluded.symbol,
             opened_at=excluded.opened_at
-    ''', (pid, info['position_id'], info['opening_order_id'], info['closing_order_id'], info['side'], float(info['callback']), bool_to_int(info['active']), opening_price, trail_value, symbol, opened_at))
+    ''', (pid, info['position_id'], info['opening_order_id'], info['closing_order_id'], info['side'], float(callback), bool_to_int(info['active']), opening_price, trail_value, symbol, opened_at))
     conn.commit()
     conn.close()
 
