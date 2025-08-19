@@ -192,7 +192,7 @@ def check_positions(symbol):
             if elapsed_minutes >= state.TRADE_MAX_CANDLES * state.CANDLE_INTERVAL_MINUTES:
                 print_with_date(f"[TIMEOUT] Closing {symbol} {pid} after {elapsed_minutes:.1f} minutes.")
                 # Code to close the position immediately:
-                close_position(symbol, info)  # You'll need to implement or call your existing close logic
+                exchange.close_position(symbol, info)  # You'll need to implement or call your existing close logic
                 info["active"] = False
                 positionsdb.update_position(pid, info, symbol)
                 continue
