@@ -50,10 +50,7 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
 
         cl_order_id = f"{symbol}-range-{side.lower()}-{i}-{int(time.time())}"
 
-        print_with_date(
-            f"[RANGE STRATEGY] {symbol} {side} | Entry: {entry_price:.4f}, "
-            f"TP: {take_profit:.4f}, SL: {stop_loss:.4f}, Qty: {contracts}"
-        )
+        print_with_date(f"[NEW] [RANGE] {symbol} {side} | Entry: {entry_price:.4f}, TP: {take_profit:.4f}, SL: {stop_loss:.4f}, Qty: {contracts}")
 
         # You may need to customize this to your real API structure:
         result = exchange.place_range_order(symbol=symbol,
