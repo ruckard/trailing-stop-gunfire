@@ -3,8 +3,35 @@ from exchange import btse as exchange
 from utils import print_with_date, debug
 import numpy as np
 import state
+import db.positions as positionsdb
 
 TRENDRANGE_CACHE = {}
+
+def place_trend_positions(symbol, sides):
+    for i, callback in enumerate(state.TRAILING_STOPS_MAP[symbol]):
+        #for side in ["LONG"]:
+        for side in sides:
+            pid = f"{side.lower()}-{i}"
+            contracts = state.CONTRACTS_MAP.get(symbol, 1)
+            result = place_trailing_stop(symbol, side, callback, contracts)
+            # Check if the result is valid (i.e., position_id and opening_order_id and closing_order_id are returned)
+            if result is None or result[0] is None or result[1] is None or result[2] is None:
+                print_with_date(f"[ERROR] Failed to place trailing stop for {symbol} {side} at {callback}%")
+                continue
+            pos_id, opening_order_id, closing_order_id, opening_price, trail_value = result
+            state.positions[symbol][pid] = {
+                "position_id": pos_id,
+                "opening_order_id": opening_order_id,
+                "closing_order_id": closing_order_id,
+                "side": side,
+                "callback": callback,
+                "active": True,
+                "opening_price" : opening_price,
+                "trail_value" : trail_value,
+                "opened_at": time.time()
+            }
+            position_info = state.positions[symbol][pid]
+            positionsdb.update_position(pid, position_info, symbol)
 
 def classify_trend_or_range_real(symbol, lookback=50, threshold=0.0003):
     """
