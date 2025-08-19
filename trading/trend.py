@@ -48,7 +48,9 @@ def calculate_easy_trend7_with_rsi(symbol, lookback=50, rsi_period=14,
     - Uses overlapping sliding windows with log-return slopes.
     - 60% majority rule instead of 80%.
     - Range and RSI filters disabled.
-    - Retracement at around 0.618 FIB level but not more than that.
+    - Only use the first 75% of candles for slope calculations.
+    - If latest 25% candles break above/below the earlier range → discard.
+    - If latest 25% candles retrace more than 0.618 fib → discard.
     """
 
     df = exchange.fetch_4h_ohlcv(symbol)
@@ -59,14 +61,44 @@ def calculate_easy_trend7_with_rsi(symbol, lookback=50, rsi_period=14,
     ohlc4 = ((df['open'] + df['high'] + df['low'] + df['close']) / 4.0).astype(float)
     values = ohlc4.tail(lookback).values
 
-    if len(values) <= 9:
-        log_returns = np.diff(np.log(values))
+    # --- Split into early (75%) and late (25%)
+    split_idx = int(len(values) * 0.75)
+    early_values = values[:split_idx]
+    late_values = values[split_idx:]
+
+    # --- Get reference levels from early segment
+    early_high = np.max(early_values)
+    early_low = np.min(early_values)
+
+    # --- Breakout check
+    if np.max(late_values) > early_high:
+        print_with_date(f"[{symbol}] Discarded: breakout above early high ({np.max(late_values):.4f} > {early_high:.4f})")
+        return 0.0
+    if np.min(late_values) < early_low:
+        print_with_date(f"[{symbol}] Discarded: breakout below early low ({np.min(late_values):.4f} < {early_low:.4f})")
+        return 0.0
+
+    # --- Fib retracement check
+    # For long trades → retrace too steep from early high
+    fib_retrace_long = early_high - 0.618 * (early_high - early_low)
+    if np.min(late_values) < fib_retrace_long:
+        print_with_date(f"[{symbol}] Discarded: retraced below 0.618 Fib for LONG")
+        return 0.0
+
+    # For short trades → retrace too steep from early low
+    fib_retrace_short = early_low + 0.618 * (early_high - early_low)
+    if np.max(late_values) > fib_retrace_short:
+        print_with_date(f"[{symbol}] Discarded: retraced above 0.618 Fib for SHORT")
+        return 0.0
+
+    # --- Now calculate slopes only on early 75%
+    if len(early_values) <= 9:
+        log_returns = np.diff(np.log(early_values))
         slope_normalized = np.mean(log_returns)
     else:
         segment_slopes = []
-
-        for i in range(len(values) - window_size + 1):
-            segment = values[i:i + window_size]
+        for i in range(len(early_values) - window_size + 1):
+            segment = early_values[i:i + window_size]
 
             log_returns = np.diff(np.log(segment))
             mean_log_ret = np.mean(log_returns)
@@ -82,8 +114,8 @@ def calculate_easy_trend7_with_rsi(symbol, lookback=50, rsi_period=14,
         negative_count = sum(1 for s in segment_slopes if s < 0)
         required_count = int(len(segment_slopes) * 0.6)  # ✅ 60% rule
 
-        first_candle = values[0]
-        last_candle = values[-1]
+        first_candle = early_values[0]
+        last_candle = early_values[-1]
 
         if positive_count >= required_count and last_candle > first_candle:
             slope_normalized = np.mean(segment_slopes)
