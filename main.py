@@ -274,8 +274,7 @@ def start_new_cycle(resume=False):
             show_positions(symbol)
 
 
-    print_with_date("DEBUG_POSITIONS_STRUCTURE - main.py - start_new_cycle")
-    debug_positions_structure()
+    debug_positions_structure("DEBUG_POSITIONS_STRUCTURE - main.py - start_new_cycle")
 
     return symbols, long_symbols, short_symbols
 

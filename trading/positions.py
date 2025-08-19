@@ -90,8 +90,7 @@ def get_position_status(position_id):
         # Get all positions first
         state.positions = get_positions_status()
 
-        print_with_date("DEBUG_POSITIONS_STRUCTURE - trading/positions.py - get_position_status")
-        debug_positions_structure()
+        debug_positions_structure("DEBUG_POSITIONS_STRUCTURE - trading/positions.py - get_position_status")
 
         debug(f"Checking positions for position_id: {position_id}")
         debug(f"All positions: {state.positions}")
