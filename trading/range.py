@@ -19,7 +19,7 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
     low = recent['low'].min()
     range_mid = (high + low) / 2
 
-    contracts = CONTRACTS_MAP.get(symbol, 1)
+    contracts = state.CONTRACTS_MAP.get(symbol, 1)
 
     price = exchange.get_current_price(symbol)
     if price is None:
