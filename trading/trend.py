@@ -49,8 +49,8 @@ def calculate_easy_trend7_with_rsi(symbol, lookback=50, rsi_period=14,
     - 60% majority rule instead of 80%.
     - Range and RSI filters disabled.
     - Only use the first 75% of candles for slope calculations.
-    - If latest 25% candles break above/below the earlier range → discard.
-    - If latest 25% candles retrace more than 0.618 fib → discard.
+    - If latest 25% candles break above the earlier range → discard (Long)
+    - If latest 25% candles retrace more than 0.618 fib → discard (Long)
     """
 
     df = exchange.fetch_4h_ohlcv(symbol)
@@ -66,36 +66,12 @@ def calculate_easy_trend7_with_rsi(symbol, lookback=50, rsi_period=14,
     early_values = values[:split_idx]
     late_values = values[split_idx:]
 
-    # --- Get reference levels from early segment
-    early_high = np.max(early_values)
-    early_low = np.min(early_values)
-
-    # --- Breakout check
-    if np.max(late_values) > early_high:
-        print_with_date(f"[{symbol}] Discarded: breakout above early high ({np.max(late_values):.4f} > {early_high:.4f})")
-        return 0.0
-    if np.min(late_values) < early_low:
-        print_with_date(f"[{symbol}] Discarded: breakout below early low ({np.min(late_values):.4f} < {early_low:.4f})")
-        return 0.0
-
-    # --- Fib retracement check
-    # For long trades → retrace too steep from early high
-    fib_retrace_long = early_high - 0.618 * (early_high - early_low)
-    if np.min(late_values) < fib_retrace_long:
-        print_with_date(f"[{symbol}] Discarded: retraced below 0.618 Fib for LONG")
-        return 0.0
-
-    # For short trades → retrace too steep from early low
-    fib_retrace_short = early_low + 0.618 * (early_high - early_low)
-    if np.max(late_values) > fib_retrace_short:
-        print_with_date(f"[{symbol}] Discarded: retraced above 0.618 Fib for SHORT")
-        return 0.0
-
-    # --- Now calculate slopes only on early 75%
     if len(early_values) <= 9:
+        # Simple slope only
         log_returns = np.diff(np.log(early_values))
         slope_normalized = np.mean(log_returns)
     else:
+        # --- Calculate slopes on early values
         segment_slopes = []
         for i in range(len(early_values) - window_size + 1):
             segment = early_values[i:i + window_size]
@@ -106,7 +82,7 @@ def calculate_easy_trend7_with_rsi(symbol, lookback=50, rsi_period=14,
 
             segment_slopes.append(vol_adj_slope)
             debug(
-                f"[DEBUG EASY TREND7] {symbol} | Window {i+1}/{len(values)-window_size+1} | "
+                f"[DEBUG EASY TREND7] {symbol} | Window {i+1}/{len(early_values)-window_size+1} | "
                 f"MeanLogRet={mean_log_ret:.6f}, VolAdjSlope={vol_adj_slope:.6f}"
             )
 
@@ -129,6 +105,31 @@ def calculate_easy_trend7_with_rsi(symbol, lookback=50, rsi_period=14,
             f"First={first_candle:.4f}, Last={last_candle:.4f}, "
             f"PosCount={positive_count}, NegCount={negative_count}"
         )
+
+        # --- Now decide trade direction
+        early_high = np.max(early_values)
+        early_low = np.min(early_values)
+
+        fib_retrace_long = early_high - 0.618 * (early_high - early_low)
+        fib_retrace_short = early_low + 0.618 * (early_high - early_low)
+
+        if slope_normalized > 0:
+            # Long trade → check upside breakout + downside retracement
+            if np.max(late_values) > early_high:
+                print_with_date(f"[{symbol}] Discarded LONG: breakout above early high ({np.max(late_values):.4f} > {early_high:.4f})")
+                return 0.0
+            if np.min(late_values) < fib_retrace_long:
+                print_with_date(f"[{symbol}] Discarded LONG: retraced below 0.618 Fib")
+                return 0.0
+
+        elif slope_normalized < 0:
+            # Short trade → check downside breakout + upside retracement
+            if np.min(late_values) < early_low:
+                print_with_date(f"[{symbol}] Discarded SHORT: breakout below early low ({np.min(late_values):.4f} < {early_low:.4f})")
+                return 0.0
+            if np.max(late_values) > fib_retrace_short:
+                print_with_date(f"[{symbol}] Discarded SHORT: retraced above 0.618 Fib")
+                return 0.0
 
     # ✅ Range filter disabled
     if False:
