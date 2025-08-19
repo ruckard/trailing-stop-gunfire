@@ -86,12 +86,12 @@ def get_positions_status(symbol=None):
 def get_position_status(position_id):
     try:
         # Get all positions first
-        state.positions = get_positions_status()
+        exchange_positions = get_positions_status()
         debug(f"Checking positions for position_id: {position_id}")
-        debug(f"All positions: {state.positions}")
+        debug(f"All exchange_positions: {exchange_positions}")
 
         # Find the position with the matching position_id
-        for position in state.positions:
+        for position in exchange_positions:
             if position.get('positionId') == position_id:
                 debug(f"Found position with position_id: {position_id}")
                 return position
