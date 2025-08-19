@@ -8,9 +8,7 @@ from api_lock_client import api_lock_acquire_lock, api_lock_release_lock
 import state
 
 
-def debug_positions_structure(debug_hint=None):
-    if (debug_hint is not None):
-        print_with_date(debug_hint)
+def debug_positions_structure():
     print_with_date(f"[DEBUG] state.positions - BEGIN")
     print_with_date(state.positions)
     print_with_date(f"[DEBUG] state.positions - END")

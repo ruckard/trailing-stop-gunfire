@@ -82,4 +82,5 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
         }
         positionsdb.update_position(pid, state.positions[symbol][pid], symbol)
 
-    debug_positions_structure("DEBUG_POSITIONS_STRUCTURE - trading/range.py - place_range_positions")
+    print_with_date("DEBUG_POSITIONS_STRUCTURE - trading/range.py - place_range_positions")
+    debug_positions_structure()

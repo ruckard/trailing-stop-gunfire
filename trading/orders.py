@@ -163,7 +163,8 @@ def place_all_positions(symbol, sides=("LONG", "SHORT")):
     print_with_date(f"[STARTING NEW {symbol} CYCLE]")
     state.positions[symbol].clear()
 
-    debug_positions_structure("DEBUG_POSITIONS_STRUCTURE - trading/orders.py - place_all_positions")
+    print_with_date("DEBUG_POSITIONS_STRUCTURE - trading/orders.py - place_all_positions")
+    debug_positions_structure()
 
     positionsdb.clear_positions(symbol)
     trend_type = trend.classify_trend_or_range(symbol)
@@ -199,7 +200,8 @@ def place_trend_positions(symbol, sides):
                 "opened_at": time.time()
             }
 
-            debug_positions_structure("DEBUG_POSITIONS_STRUCTURE - trading/orders.py - place_trend_positions")
+            print_with_date("DEBUG_POSITIONS_STRUCTURE - trading/orders.py - place_trend_positions")
+            debug_positions_structure()
 
             position_info = state.positions[symbol][pid]
             positionsdb.update_position(pid, position_info, symbol)
@@ -288,7 +290,8 @@ def check_positions(symbol):
                             "opening_price" : opening_price,
                             "trail_value" : trail_value
                         }
-                        debug_positions_structure("DEBUG_POSITIONS_STRUCTURE - trading/orders.py - check_positions (1)")
+                        print_with_date("DEBUG_POSITIONS_STRUCTURE - trading/orders.py - check_positions (1)")
+                        debug_positions_structure()
                         position_info = state.positions[symbol][pid]
                         positionsdb.update_position(pid, position_info, symbol)
                         all_closed = False
@@ -312,7 +315,8 @@ def check_positions(symbol):
                             "opening_price" : opening_price,
                             "trail_value" : trail_value
                         }
-                        debug_positions_structure("DEBUG_POSITIONS_STRUCTURE - trading/orders.py - check_positions (2)")
+                        print_with_date("DEBUG_POSITIONS_STRUCTURE - trading/orders.py - check_positions (2)")
+                        debug_positions_structure()
                         position_info = state.positions[symbol][pid]
                         positionsdb.update_position(pid, position_info, symbol)
                         all_closed = False
@@ -350,7 +354,8 @@ def check_positions(symbol):
                             "opening_price" : opening_price,
                             "trail_value" : trail_value
                         }
-                        debug_positions_structure("DEBUG_POSITIONS_STRUCTURE - trading/orders.py - check_positions (3)")
+                        print_with_date("DEBUG_POSITIONS_STRUCTURE - trading/orders.py - check_positions (3)")
+                        debug_positions_structure()
                         position_info = state.positions[symbol][pid]
                         positionsdb.update_position(pid, position_info, symbol)
                         all_closed = False
@@ -374,7 +379,8 @@ def check_positions(symbol):
                             "opening_price" : opening_price,
                             "trail_value" : trail_value
                         }
-                        debug_positions_structure("DEBUG_POSITIONS_STRUCTURE - trading/orders.py - check_positions (4)")
+                        print_with_date("DEBUG_POSITIONS_STRUCTURE - trading/orders.py - check_positions (4)")
+                        debug_positions_structure()
                         position_info = state.positions[symbol][pid]
                         positionsdb.update_position(pid, position_info, symbol)
                         all_closed = False
