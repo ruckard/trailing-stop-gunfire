@@ -8,7 +8,7 @@ import time, json
 
 import state
 import db.positions as positionsdb
-from trading.positions import get_position_status
+from trading.positions import get_position_status, get_trade_by_closing_order_id
 from trading.trend import place_trend_positions
 from trading.range import place_range_positions
 
