@@ -7,8 +7,6 @@ from trading.common import (
     int_to_bool
 )
 
-from utils import debug_positions_structure
-
 def init():
     conn = sqlite3.connect(state.DB_PATH)
     c = conn.cursor()
@@ -89,8 +87,6 @@ def load_positions(symbol):
             "trail_value": trail_value,
             "opened_at": opened_at,
         }
-    print_with_date("DEBUG_POSITIONS_STRUCTURE - db/positions.py - load_positions")
-    debug_positions_structure()
 
 def clear_positions(symbol):
     conn = sqlite3.connect(state.DB_PATH)

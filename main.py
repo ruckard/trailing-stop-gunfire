@@ -71,8 +71,6 @@ from trading.analysis import (
 
 from utils import print_with_date, debug, safe_override_import_or_default
 
-from utils import debug_positions_structure
-
 class PriceFetchError(Exception):
     """Raised when the current price could not be fetched from the API."""
     pass
@@ -272,10 +270,6 @@ def start_new_cycle(resume=False):
                 place_all_positions(symbol, sides=("SHORT",))
         else:
             show_positions(symbol)
-
-
-    print_with_date("DEBUG_POSITIONS_STRUCTURE - main.py - start_new_cycle")
-    debug_positions_structure()
 
     return symbols, long_symbols, short_symbols
 
