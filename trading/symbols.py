@@ -103,6 +103,7 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
 
     trend_scores = {}
     atr_percents = {}
+    state.TREND_STOP_LOSSES = {}
 
     for symbol in symbols:
         # Compute score based on rank type
@@ -129,6 +130,7 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
             trend_result = normalize_trend_result(raw_result)
             score = trend_result["score"]
             stop_loss = trend_result["stop_loss"]
+            state.TREND_STOP_LOSSES[symbol] = stop_loss
         else:
             raise ValueError(f"Unsupported rank_type: {rank_type}")
 

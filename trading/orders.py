@@ -88,6 +88,12 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
             "txType": "LIMIT",
             "positionMode": "ISOLATED"
         }
+
+        custom_sl = state.TREND_STOP_LOSSES.get(symbol)
+        if custom_sl is not None:
+            market_order["stopLossPrice"] = float(custom_sl)
+            market_order["stopLossTrigger"] = "lastPrice"
+
         market_body_str = json.dumps(market_order, separators=(',', ':'))
         market_sig = exchange.generate_signature(API_SECRET, url_path, nonce, market_body_str)
         market_headers = {
