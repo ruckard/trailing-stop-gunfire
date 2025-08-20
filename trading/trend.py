@@ -139,8 +139,8 @@ def calculate_easy_trend7_with_rsi(symbol, lookback=50, rsi_period=14,
         early_high = np.max(early_values)
         early_low = np.min(early_values)
 
-        fib_retrace_long = early_high - 0.618 * (early_high - early_low)
-        fib_retrace_short = early_low + 0.618 * (early_high - early_low)
+        fib_retrace_long  = early_high - (1 - 0.618) * (early_high - early_low)
+        fib_retrace_short = early_low  + (1 - 0.618) * (early_high - early_low)
 
         if slope_normalized > 0:
             # Long trade → check upside breakout + downside retracement
