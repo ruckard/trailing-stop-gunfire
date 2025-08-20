@@ -143,6 +143,7 @@ state.MIN_CONTRACT_AGE_DAYS = 15
 state.CONTRACTS_MAP = {}
 state.CONTRACT_SIZES = {}
 state.MIN_PRICE_INCREMENTS = {}
+state.TREND_STOP_LOSSES = {}
 
 state.LAST_AVAILABLE_BALANCE = None
 
@@ -233,7 +234,7 @@ def start_new_cycle(resume=False):
             base_symbols,
             long_top_number=MAXIMUM_LONG_TRADES_NUMBER,
             short_top_number=MAXIMUM_SHORT_TRADES_NUMBER,
-            rank_type='EASY7',
+            rank_type='EASY8',
             vol_bottom_percentile = state.VOL_BOTTOM_PERCENTILE,
             vol_top_percentile = state.VOL_TOP_PERCENTILE
         )

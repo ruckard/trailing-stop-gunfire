@@ -12,6 +12,12 @@ import db.knownsymbols as knownsymbolsdb
 import trading.trend as trend
 from trading.indicators import get_atr
 
+def normalize_trend_result(result):
+    if isinstance(result, dict):
+        return result
+    else:
+        return {"score": float(result), "stop_loss": None}
+
 def update_symbol_registry(symbols):
     conn = sqlite3.connect(state.KNOWN_SYMBOLS_DB_PATH)
     c = conn.cursor()
@@ -83,7 +89,7 @@ def filter_symbols_by_age_and_volume(market_summary):
 
     return final
 
-def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_type='EASY7',
+def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_type='EASY8',
                            vol_bottom_percentile=None, vol_top_percentile=None):
     """
     Rank and filter symbols based on trend score and normalized ATR%.
@@ -97,6 +103,7 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
 
     trend_scores = {}
     atr_percents = {}
+    state.TREND_STOP_LOSSES = {}
 
     for symbol in symbols:
         # Compute score based on rank type
@@ -118,6 +125,12 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
             score = trend.calculate_easy_trend6_with_rsi(symbol)
         elif rank_type == 'EASY7':
             score = trend.calculate_easy_trend7_with_rsi(symbol)
+        elif rank_type == 'EASY8':
+            raw_result = trend.calculate_easy_trend8_with_rsi(symbol)
+            trend_result = normalize_trend_result(raw_result)
+            score = trend_result["score"]
+            stop_loss = trend_result["stop_loss"]
+            state.TREND_STOP_LOSSES[symbol] = stop_loss
         else:
             raise ValueError(f"Unsupported rank_type: {rank_type}")
 
