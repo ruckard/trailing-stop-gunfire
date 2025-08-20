@@ -1,9 +1,9 @@
 # exchange/btse_cache.py
 from exchange import btse   # import your real BTSE API functions
 
-def fetch_4h_ohlcv_real(symbol: str):
+def fetch_4h_ohlcv_real(symbol, limit=100):
     """Wrapper for BTSE 4h OHLCV fetch."""
-    return btse.fetch_4h_ohlcv_real(symbol)
+    return btse.fetch_4h_ohlcv_real(symbol, limit=limit)
 
 def fetch_contract_sizes():
     """Wrapper for BTSE contract sizes fetch."""
