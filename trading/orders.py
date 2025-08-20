@@ -161,7 +161,7 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
         print_with_date(f"[NEW] [TRAILING] {symbol} | {position_side} | Callback: {callback_rate}%")
         return position_id, opening_order_id, closing_order_id, opening_price, trail_value
     except Exception as e:
-        print_with_date(f"[ERROR] Failed to place order: {e}")
+        print_with_date(f"[ERROR] Failed to place TRAILING STOP order: {e}")
         return None, None, None, None, None
 
 # === Place All Positions ===
