@@ -301,7 +301,7 @@ def place_range_order(symbol, position_side, contracts, entry_price, take_profit
             return None
         return position_id
     except Exception as e:
-        print_with_date(f"[ERROR] Failed to place order: {e}")
+        print_with_date(f"[ERROR] Failed to place LIMIT order: {e}")
         return None
 
 def close_position(symbol, info):
