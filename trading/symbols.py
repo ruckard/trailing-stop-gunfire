@@ -126,7 +126,7 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
         elif rank_type == 'EASY7':
             score = trend.calculate_easy_trend7_with_rsi(symbol)
         elif rank_type == 'EASY8':
-            raw_result = calculate_easy_trend8_with_rsi(symbol)
+            raw_result = trend.calculate_easy_trend8_with_rsi(symbol)
             trend_result = normalize_trend_result(raw_result)
             score = trend_result["score"]
             stop_loss = trend_result["stop_loss"]
