@@ -43,10 +43,20 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
         else:
             continue
 
+        print_with_date(f"[DEBUG-place_range_positions] (PRE-round) side: {side}")
+        print_with_date(f"[DEBUG-place_range_positions] (PRE-round) entry_price: {entry_price}")
+        print_with_date(f"[DEBUG-place_range_positions] (PRE-round) take_profit: {take_profit}")
+        print_with_date(f"[DEBUG-place_range_positions] (PRE-round) stop_loss: {stop_loss}")
+
         # Ensure price decimal scale is the right one
         entry_price = round(entry_price, int(-math.log10(state.MIN_PRICE_INCREMENTS[symbol])))
         take_profit = round(take_profit, int(-math.log10(state.MIN_PRICE_INCREMENTS[symbol])))
         stop_loss = round(stop_loss, int(-math.log10(state.MIN_PRICE_INCREMENTS[symbol])))
+
+        print_with_date(f"[DEBUG-place_range_positions] (POST-round) side: {side}")
+        print_with_date(f"[DEBUG-place_range_positions] (POST-round) entry_price: {entry_price}")
+        print_with_date(f"[DEBUG-place_range_positions] (POST-round) take_profit: {take_profit}")
+        print_with_date(f"[DEBUG-place_range_positions] (POST-round) stop_loss: {stop_loss}")
 
         cl_order_id = f"{symbol}-range-{side.lower()}-{i}-{int(time.time())}"
 
