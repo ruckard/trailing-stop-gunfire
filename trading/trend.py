@@ -79,7 +79,7 @@ def calculate_easy_trend8_with_rsi(symbol, lookback=50, rsi_period=14,
     - Range and RSI filters disabled.
     - Only use the first 75% of candles for slope calculations.
     - If latest 25% candles break above the earlier range → discard (Long)
-    - If latest 25% candles retrace more than 0.618 fib → discard (Long)
+    - If latest 25% candles retrace more than fib_level fib → discard (Long)
     - Return recommended StopLoss
     """
 
@@ -141,8 +141,8 @@ def calculate_easy_trend8_with_rsi(symbol, lookback=50, rsi_period=14,
         early_high = np.max(early_values)
         early_low = np.min(early_values)
 
-        fib_retrace_long  = early_high - (1 - 0.618) * (early_high - early_low)
-        fib_retrace_short = early_low  + (1 - 0.618) * (early_high - early_low)
+        fib_retrace_long  = early_high - (1 - state.FIB_LEVEL) * (early_high - early_low)
+        fib_retrace_short = early_low  + (1 - state.FIB_LEVEL) * (early_high - early_low)
 
         if slope_normalized > 0:
             # Long trade → check upside breakout + downside retracement
@@ -150,7 +150,7 @@ def calculate_easy_trend8_with_rsi(symbol, lookback=50, rsi_period=14,
                 print_with_date(f"[{symbol}] Discarded LONG: breakout above early high ({np.max(late_values):.4f} > {early_high:.4f})")
                 return 0.0
             if np.min(late_values) < fib_retrace_long:
-                print_with_date(f"[{symbol}] Discarded LONG: retraced below 0.618 Fib")
+                print_with_date(f"[{symbol}] Discarded LONG: retraced below {state.FIB_LEVEL:.3f} Fib")
                 return 0.0
             return {"score": float(slope_normalized), "stop_loss": fib_retrace_long}
 
@@ -160,7 +160,7 @@ def calculate_easy_trend8_with_rsi(symbol, lookback=50, rsi_period=14,
                 print_with_date(f"[{symbol}] Discarded SHORT: breakout below early low ({np.min(late_values):.4f} < {early_low:.4f})")
                 return 0.0
             if np.max(late_values) > fib_retrace_short:
-                print_with_date(f"[{symbol}] Discarded SHORT: retraced above 0.618 Fib")
+                print_with_date(f"[{symbol}] Discarded SHORT: retraced above {state.FIB_LEVEL:.3f} Fib")
                 return 0.0
             return {"score": float(slope_normalized), "stop_loss": fib_retrace_short}
 

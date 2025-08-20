@@ -119,6 +119,8 @@ DEFAULT_MAXIMUM_SHORT_TRADES_NUMBER = 6
 # Default client name is the directory name where script is running
 DEFAULT_CLIENT_NAME = os.path.basename(os.getcwd())
 
+DEFAULT_FIB_LEVEL = 0.618
+
 state.SYMBOL_CONFIGS = safe_override_import_or_default("override_config", "SYMBOL_CONFIGS", DEFAULT_SYMBOL_CONFIGS)
 state.API_DELAY_MS = safe_override_import_or_default("override_config", "API_DELAY_MS", DEFAULT_API_DELAY_MS)
 state.ATR_MA_PERIOD = safe_override_import_or_default("override_config", "ATR_MA_PERIOD", DEFAULT_ATR_MA_PERIOD)
@@ -135,6 +137,7 @@ state.RANGE_STOP_LOSS_PCT = safe_override_import_or_default("override_config", "
 state.CLIENT_NAME = safe_override_import_or_default("override_config", "CLIENT_NAME", DEFAULT_CLIENT_NAME)
 state.ADDITIONAL_SYMBOLS = safe_override_import_or_default("override_config", "ADDITIONAL_SYMBOLS", DEFAULT_ADDITIONAL_SYMBOLS)
 state.EXCLUDED_SYMBOLS = safe_override_import_or_default("override_config", "EXCLUDED_SYMBOLS", DEFAULT_EXCLUDED_SYMBOLS)
+state.FIB_LEVEL = safe_override_import_or_default("override_config", "FIB_LEVEL", DEFAULT_FIB_LEVEL)
 
 state.KNOWN_SYMBOLS_DB_PATH = "known_symbols.db"
 state.DB_PATH = DB_PATH
