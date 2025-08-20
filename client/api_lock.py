@@ -3,7 +3,7 @@ import socket
 import time
 
 WAIT_DAEMON_HOST = '127.0.0.1'
-WAIT_DAEMON_PORT = 5002
+WAIT_DAEMON_PORT = 5005
 
 def api_lock_send_command(command, client_id):
     try:
