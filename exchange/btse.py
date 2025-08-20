@@ -258,7 +258,7 @@ def place_range_order(symbol, position_side, contracts, entry_price, take_profit
         full_url = BASE_URL + url_path
 
         # === Limit Order ===
-        debug(f"[DEBUG] Placing LIMIT order: {limit_side} {contracts} contracts")
+        print_with_date(f"[DEBUG] Placing LIMIT order: {limit_side} {contracts} contracts")
         nonce = str(int(time.time() * 1000))
         limit_order = {
             "postOnly": False,
@@ -286,10 +286,10 @@ def place_range_order(symbol, position_side, contracts, entry_price, take_profit
             'Content-Type': 'application/json'
         }
 
-        debug(f"LIMIT order payload: {limit_body_str}")
+        print_with_date(f"LIMIT order payload: {limit_body_str}")
         limit_response = throttled_request('POST', full_url, headers=limit_headers, data=limit_body_str)
-        debug(f"LIMIT order response status: {limit_response.status_code}")
-        debug(f"LIMIT order response body: {limit_response.text}")
+        print_with_date(f"LIMIT order response status: {limit_response.status_code}")
+        print_with_date(f"LIMIT order response body: {limit_response.text}")
         limit_response.raise_for_status()
         limit_data = limit_response.json()
         if not isinstance(limit_data, list) or not limit_data:
