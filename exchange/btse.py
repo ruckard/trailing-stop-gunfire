@@ -12,6 +12,7 @@ import state
 from config import API_KEY, API_SECRET, BASE_URL
 from utils import print_with_date, lock_guard, debug
 
+from client.cache import api_cache_fetch
 
 OHLCV_CACHE = {}
 OHLCV_CACHE_TIMEOUT = timedelta(minutes=5)
@@ -157,7 +158,7 @@ def fetch_4h_ohlcv(symbol, limit=100):
         return OHLCV_CACHE[symbol][0]
 
     # Otherwise, fetch fresh data and cache it
-    df = fetch_4h_ohlcv_real(symbol, limit)
+    df = api_cache_fetch("fetch_4h_ohlcv_real", symbol, limit)
     OHLCV_CACHE[symbol] = (df, datetime.utcnow())
     return df
 
