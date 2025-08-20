@@ -70,6 +70,8 @@ from trading.analysis import (
 
 from utils import print_with_date, debug, safe_override_import_or_default
 
+from client.cache import api_cache_fetch
+
 class PriceFetchError(Exception):
     """Raised when the current price could not be fetched from the API."""
     pass
@@ -246,8 +248,8 @@ def start_new_cycle(resume=False):
             print_with_date("[CYCLE] No valid symbols found. Skipping cycle.")
             return None, None, None
 
-    state.CONTRACT_SIZES = exchange.fetch_contract_sizes(symbols)
-    state.MIN_PRICE_INCREMENTS = exchange.fetch_min_price_increments(symbols)
+    state.CONTRACT_SIZES = api_cache_fetch.fetch_contract_sizes(symbols)
+    state.MIN_PRICE_INCREMENTS = api_cache_fetch.fetch_min_price_increments(symbols)
     state.CONTRACTS_MAP, MAX_EXPECTED_LOSS = compute_contracts_from_prices(symbols, state.CONTRACT_SIZES)
 
     print_with_date(f"[CONTRACT_SIZES] {state.CONTRACT_SIZES}")

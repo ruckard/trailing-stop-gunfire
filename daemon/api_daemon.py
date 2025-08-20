@@ -4,13 +4,13 @@ import pickle
 
 from daemon.lock import LockManager
 from daemon.cache import CacheManager
-import exchange.btse_cache as btse_cache  # exchange-specific cache
+import exchange.btse_cache as exchange_cache  # exchange-specific cache
 
 HOST = "127.0.0.1"
 PORT = 5005
 
 lock_manager = LockManager()
-cache_manager = CacheManager(btse_cache)
+cache_manager = CacheManager(exchange_cache)
 
 def handle_client(conn, addr):
     try:
