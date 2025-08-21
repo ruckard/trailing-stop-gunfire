@@ -43,6 +43,7 @@ def handle_client(conn, addr):
         conn.close()
 
 def start_server():
+    from utils import print_with_date, debug
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((HOST, PORT))
         s.listen()
