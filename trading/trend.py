@@ -943,7 +943,9 @@ def calculate_atr(df, period=14, ma='SMA', ma_period=48):
     return df['ATR'].iloc[-1]
 
 def calculate_trailing_start_from_atr(symbol, multiplier=2.125, ma='HIGHEST', ma_period=48):
+    print_with_date(f"DEBUG-calculate_trailing_start_from_atr: symbol: {symbol} 1");
     df = exchange.fetch_4h_ohlcv(symbol)
+    print_with_date(f"DEBUG-calculate_trailing_start_from_atr: symbol: {symbol} 2");
     if df is None:
         return None
     atr = calculate_atr(df, ma_period=ma_period, ma=ma)
