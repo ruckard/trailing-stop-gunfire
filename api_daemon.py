@@ -14,19 +14,14 @@ cache_manager = CacheManager(exchange_cache)
 
 def handle_client(conn, addr):
     try:
-        request = conn.recv(4096)
-        if not request:
-            conn.close()
-            return
-
-        data = pickle.loads(request)
+        data = recv_msg(conn)
 
         # Distinguish lock vs cache
         if isinstance(data, str):
             # e.g. "LOCK client1" or "RELEASE client1"
             command, client_id = data.split()
             response = lock_manager.handle(command, client_id)
-            conn.sendall(response.encode())
+            send_msg(conn, response)
 
         elif isinstance(data, tuple):
             # e.g. ("fetch_4h_ohlcv_real", ("BTC-PERP",))
