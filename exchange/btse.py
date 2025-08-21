@@ -151,17 +151,14 @@ def fetch_4h_ohlcv(symbol, limit=100):
     Prunes expired entries and uses cache if available.
     """
     # Remove expired cache entries first
-    print_with_date(f"DEBUG-fetch_4h_ohlcv: symbol: {symbol} 1");
     prune_ohlcv_cache()
-    print_with_date(f"DEBUG-fetch_4h_ohlcv: symbol: {symbol} 2");
 
     # If symbol is cached after pruning, it's valid
     if symbol in OHLCV_CACHE:
         return OHLCV_CACHE[symbol][0]
-    print_with_date(f"DEBUG-fetch_4h_ohlcv: symbol: {symbol} 3");
+
     # Otherwise, fetch fresh data and cache it
     df = api_cache_fetch("fetch_4h_ohlcv_real", symbol, limit)
-        print_with_date(f"DEBUG-fetch_4h_ohlcv: symbol: {symbol} 4");
     print_with_date(f"DEBUG-CACHE df: {df}")
     OHLCV_CACHE[symbol] = (df, datetime.utcnow())
     return df
