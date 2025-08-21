@@ -248,7 +248,9 @@ def start_new_cycle(resume=False):
             print_with_date("[CYCLE] No valid symbols found. Skipping cycle.")
             return None, None, None
 
+    print_with_date("DEBUG1")
     state.CONTRACT_SIZES = api_cache_fetch.fetch_contract_sizes(symbols)
+    print_with_date("DEBUG2")
     state.MIN_PRICE_INCREMENTS = api_cache_fetch.fetch_min_price_increments(symbols)
     state.CONTRACTS_MAP, MAX_EXPECTED_LOSS = compute_contracts_from_prices(symbols, state.CONTRACT_SIZES)
 
