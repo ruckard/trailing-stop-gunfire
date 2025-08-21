@@ -13,21 +13,21 @@ lock_manager = LockManager()
 cache_manager = CacheManager(exchange_cache)
 
 def handle_client(conn, addr):
+    from client.msg_utils import send_msg, recv_msg
     try:
-        data = recv_msg(conn)   # <-- receive full pickled object
+        data = recv_msg(conn)
         if data is None:
             conn.close()
             return
 
-        # Distinguish lock vs cache
-        if isinstance(data, str):
-            # e.g., "LOCK client1" or "RELEASE client1"
-            command, client_id = data.split()
+        # --- LOCK commands ---
+        if isinstance(data, tuple) and len(data) == 2 and data[0] in ("LOCK", "RELEASE"):
+            command, client_id = data
             response = lock_manager.handle(command, client_id)
-            send_msg(conn, response)   # <-- send pickled response
+            send_msg(conn, response)
 
-        elif isinstance(data, tuple):
-            # e.g., ("fetch_4h_ohlcv_real", ("BTC-PERP",))
+        # --- CACHE function calls ---
+        elif isinstance(data, tuple) and len(data) == 2 and isinstance(data[1], tuple):
             func_name, args = data
             result = cache_manager.get(func_name, args)
             send_msg(conn, result)
