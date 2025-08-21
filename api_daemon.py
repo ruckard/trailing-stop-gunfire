@@ -5,6 +5,7 @@ import pickle
 from daemon.lock import LockManager
 from daemon.cache import CacheManager
 import exchange.btse_cache as exchange_cache  # exchange-specific cache
+from client.msg_utils import send_msg, recv_msg
 
 HOST = "127.0.0.1"
 PORT = 5005
