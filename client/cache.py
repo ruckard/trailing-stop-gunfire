@@ -1,5 +1,6 @@
 # client_cache.py
 import socket, pickle
+from utils import print_with_date, debug
 
 HOST = "127.0.0.1"
 PORT = 5005
