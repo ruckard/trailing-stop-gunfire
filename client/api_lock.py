@@ -2,12 +2,12 @@
 import socket
 import time
 from client.msg_utils import send_msg, recv_msg
-from utils import print_with_date  # optional, for consistent logging
 
 WAIT_DAEMON_HOST = '127.0.0.1'
 WAIT_DAEMON_PORT = 5005
 
 def api_lock_send_command(command, client_id):
+    from utils import print_with_date
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((WAIT_DAEMON_HOST, WAIT_DAEMON_PORT))
@@ -19,6 +19,7 @@ def api_lock_send_command(command, client_id):
         return "ERROR"
 
 def api_lock_acquire_lock(client_id):
+    from utils import print_with_date
     while True:
         result = api_lock_send_command("LOCK", client_id)
         if result == "GRANTED":
@@ -32,6 +33,7 @@ def api_lock_acquire_lock(client_id):
             time.sleep(1)
 
 def api_lock_release_lock(client_id):
+    from utils import print_with_date
     result = api_lock_send_command("RELEASE", client_id)
     print_with_date(f"[(LOCK) Client:{client_id}] Released lock: {result}")
     return result
