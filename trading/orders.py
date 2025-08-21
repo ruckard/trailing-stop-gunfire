@@ -15,9 +15,7 @@ from trading.range import place_range_positions
 def build_trailing_stops_map():
     result = {}
     for symbol, cfg in state.SYMBOL_CONFIGS.items():
-        print_with_date(f"DEBUG-build_trailing_stops_map: symbol: {symbol} 1");
         trailing_start = trend.calculate_trailing_start_from_atr(symbol, ma_period=state.ATR_MA_PERIOD)
-        print_with_date(f"DEBUG-build_trailing_stops_map: symbol: {symbol} 2");
         if trailing_start is None:
             continue  # or raise/log error
 
