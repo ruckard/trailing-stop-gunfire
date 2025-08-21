@@ -5,6 +5,7 @@ from daemon.lock import LockManager
 from daemon.cache import CacheManager
 import exchange.btse_cache as exchange_cache  # exchange-specific cache
 from client.msg_utils import send_msg, recv_msg
+from utils import print_with_date, debug
 
 HOST = "127.0.0.1"
 PORT = 5005
@@ -13,12 +14,13 @@ lock_manager = LockManager()
 cache_manager = CacheManager(exchange_cache)
 
 def handle_client(conn, addr):
-    from client.msg_utils import send_msg, recv_msg
     try:
         data = recv_msg(conn)
         if data is None:
+            print_with_date(f"[APIDaemon] No data received from {addr}")
             conn.close()
             return
+        print_with_date(f"[APIDaemon] Received data from {addr}: {data}")
 
         # --- LOCK commands ---
         if isinstance(data, tuple) and len(data) == 2 and data[0] in ("LOCK", "RELEASE"):
@@ -44,7 +46,7 @@ def start_server():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((HOST, PORT))
         s.listen()
-        print(f"[APIDaemon] Listening on {HOST}:{PORT}")
+        print_with_date(f"[APIDaemon] Listening on {HOST}:{PORT}")
         while True:
             conn, addr = s.accept()
             threading.Thread(target=handle_client, args=(conn, addr), daemon=True).start()
