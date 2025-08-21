@@ -15,7 +15,7 @@ cache_manager = CacheManager(exchange_cache)
 
 def handle_client(conn, addr):
     try:
-        data = recv_msg(conn)
+        data = recv_msg(conn)  # <-- use helper
 
         # Distinguish lock vs cache
         if isinstance(data, str):
@@ -28,13 +28,13 @@ def handle_client(conn, addr):
             # e.g. ("fetch_4h_ohlcv_real", ("BTC-PERP",))
             func_name, args = data
             result = cache_manager.get(func_name, args)
-            conn.sendall(pickle.dumps(result))
+            send_msg(conn, result)
 
         else:
-            conn.sendall(pickle.dumps({"error": "Invalid request"}))
+            send_msg(conn, {"error": "Invalid request"})
 
     except Exception as e:
-        conn.sendall(pickle.dumps({"error": str(e)}))
+        send_msg(conn, {"error": str(e)})
     finally:
         conn.close()
 
