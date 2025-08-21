@@ -215,30 +215,23 @@ def start_new_cycle(resume=False):
         knownsymbolsdb.init()
 
         # 2️⃣ Fetch market summary from BTSE
-        print_with_date("DEBUG3.1 - get_market_summary - BEFORE");
         market_summary = exchange.get_market_summary()
-        print_with_date("DEBUG3.2 - get_market_summary - AFTER");
         if market_summary is None:
             return None, None, None
 
-        print_with_date("DEBUG4.1");
         # 3️⃣ Filter symbols by age and volume using the new helper
         filtered_symbols = filter_symbols_by_age_and_volume(market_summary)
 
-        print_with_date("DEBUG5.1");
         # 4️⃣ Update DB registry with filtered symbols
         update_symbol_registry(filtered_symbols)
 
-        print_with_date("DEBUG6.1");
         # 5️⃣ Setup modes for new symbols (mockup)
         setup_symbol_modes()
 
-        print_with_date("DEBUG7.1");
         # 6️⃣ Get only 'ready' symbols for trading
         base_symbols = knownsymbolsdb.get_ready_symbols()
         # Forget about old trades if we are starting a new cycle
         state.positions = {}
-        print_with_date("DEBUG8.1");
         for symbol in base_symbols:
             positionsdb.clear_positions(symbol)
         symbols, long_symbols, short_symbols = filter_symbols_by_rank(
@@ -250,15 +243,12 @@ def start_new_cycle(resume=False):
             vol_top_percentile = state.VOL_TOP_PERCENTILE
         )
 
-        print_with_date("DEBUG9.1");
         # Handle case where no symbols are selected
         if symbols is None or long_symbols is None or short_symbols is None:
             print_with_date("[CYCLE] No valid symbols found. Skipping cycle.")
             return None, None, None
 
-    print_with_date("DEBUG10.1");
     state.CONTRACT_SIZES = api_cache_fetch.fetch_contract_sizes(symbols)
-    print_with_date("DEBUG11.1");
     state.MIN_PRICE_INCREMENTS = api_cache_fetch.fetch_min_price_increments(symbols)
     state.CONTRACTS_MAP, MAX_EXPECTED_LOSS = compute_contracts_from_prices(symbols, state.CONTRACT_SIZES)
 
@@ -298,9 +288,7 @@ def run_main_loop():
     # Ensure we have valid symbols before entering the main loop
     symbols = None
     while symbols is None:
-        print_with_date("DEBUG1.1 - while symbols is None");
         symbols, long_symbols, short_symbols = start_new_cycle(resume=resume_cycle)
-        print_with_date("DEBUG1.2 - After start_new_cycle");
         if symbols is None:
             print_with_date("[MAIN LOOP] No active symbols. Waiting 10 minutes before retry.")
             time.sleep(600)
@@ -325,9 +313,7 @@ def run_main_loop():
 
             if batch_all_closed:
                 print_with_date("[CYCLE] All symbols closed. Starting new cycle.")
-                print_with_date("DEBUG2.1 - New cycle main loop - BEFORE");
                 symbols, long_symbols, short_symbols = start_new_cycle()
-                print_with_date("DEBUG2.2 - New cycle main loop - AFTER");
 
             # If no symbols, just sleep and retry next iteration
             if symbols is None:
