@@ -290,13 +290,18 @@ def start_new_cycle(resume=False):
 
 # === Main Loop ===
 def run_main_loop():
+    print_with_date("DEBUG0.1");
     positionsdb.init()
+    print_with_date("DEBUG0.2");
 
     active_symbols = positionsdb.get_active_symbols()
+    print_with_date("DEBUG0.3");
     resume_cycle = bool(active_symbols)
+    print_with_date("DEBUG0.4");
 
     # Ensure we have valid symbols before entering the main loop
     symbols = None
+    print_with_date("DEBUG0.5");
     while symbols is None:
         print_with_date("DEBUG1.1 - while symbols is None");
         symbols, long_symbols, short_symbols = start_new_cycle(resume=resume_cycle)
