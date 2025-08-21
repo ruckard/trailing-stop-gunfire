@@ -1,6 +1,5 @@
 # client_cache.py
 import socket
-from utils import print_with_date, debug
 from client.msg_utils import send_msg, recv_msg
 
 HOST = "127.0.0.1"
