@@ -1,8 +1,9 @@
 import pickle
 import struct
-from utils import print_with_date, debug
 
 def send_msg(sock, obj):
+    # TODO: Fix this circular import in a different way
+    from utils import print_with_date, debug
     """Send a pickled object with length prefix."""
     data = pickle.dumps(obj)
     length = struct.pack("!I", len(data))  # 4-byte unsigned int, network order
@@ -10,6 +11,8 @@ def send_msg(sock, obj):
     sock.sendall(length + data)
 
 def recv_msg(sock):
+    # TODO: Fix this circular import in a different way
+    from utils import print_with_date, debug
     """Receive a pickled object with length prefix."""
     # Read message length (4 bytes)
     raw_len = recvall(sock, 4)
