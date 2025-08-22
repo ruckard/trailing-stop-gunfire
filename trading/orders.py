@@ -174,7 +174,8 @@ def place_all_positions(symbol, sides=("LONG", "SHORT")):
     if trend_type == "trend":
         place_trend_positions(symbol, sides)
     elif trend_type == "range":
-        place_range_positions(symbol, sides, entry_offset_pct=state.RANGE_ENTRY_OFFSET_PCT, take_profit_pct=state.RANGE_TAKE_PROFIT_PCT, stop_loss_pct=state.RANGE_STOP_LOSS_PCT)
+        print_with_date(f"[SKIP] Range detected for: {symbol}. RANGE DISABLED on purpose.")
+        #place_range_positions(symbol, sides, entry_offset_pct=state.RANGE_ENTRY_OFFSET_PCT, take_profit_pct=state.RANGE_TAKE_PROFIT_PCT, stop_loss_pct=state.RANGE_STOP_LOSS_PCT)
     else:
         print_with_date(f"[SKIP] Could not classify trend/range for {symbol}")
 
