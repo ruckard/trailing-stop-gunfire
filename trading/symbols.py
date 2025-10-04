@@ -141,8 +141,15 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
         trend_scores[symbol] = score
 
         atr = get_atr(symbol)
-        price = exchange.retry_until_valid(exchange.get_current_price, symbol, wait_seconds=10)
-        # TODO: Implement max_retries and check if price if None so that we can gracefully end this
+        price = exchange.retry_until_valid(exchange.get_current_price, symbol, wait_seconds=10, max_retries=5)
+
+        if price is None:
+            print_with_date(f"[WARN] Skipping {symbol} due to None price after max retries.")
+            # Remove from all related collections to ensure consistency
+            trend_scores.pop(symbol, None)
+            atr_percents.pop(symbol, None)
+            state.TREND_STOP_LOSSES.pop(symbol, None)
+            continue  # Skip this symbol entirely
 
         atr_percent = (Decimal(str(atr)) / Decimal(str(price))) * Decimal("100")
         atr_percents[symbol] = atr_percent
