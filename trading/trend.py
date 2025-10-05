@@ -41,10 +41,16 @@ def classify_trend_or_range_real(symbol, lookback=50, threshold=0.0003):
     Returns: 'trend', 'range', or 'unknown'
     """
     try:
-        score = calculate_easy_trend7_with_rsi(symbol, lookback=lookback)
-        if score == 0.0:
+        score = calculate_easy_trend8_with_rsi(symbol, lookback=lookback)
+
+        if isinstance(score, dict):
+            score_value = score.get("score", 0.0)
+        else:
+            score_value = score
+
+        if score_value == 0.0:
             return "range"
-        elif abs(score) >= threshold:
+        elif abs(score_value) >= threshold:
             return "trend"
         else:
             return "range"
