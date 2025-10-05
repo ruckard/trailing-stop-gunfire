@@ -125,7 +125,7 @@ def prune_ohlcv_cache():
     for sym in expired:
         del OHLCV_CACHE[sym]
 
-def fetch_4h_ohlcv_real(symbol, limit=100):
+def fetch_5m_ohlcv_real(symbol, limit=100):
     url = f"{BASE_URL}/api/v2.2/ohlcv"
     end_time = int(time.time() * 1000)  # current timestamp in ms
     params = {
@@ -145,9 +145,9 @@ def fetch_4h_ohlcv_real(symbol, limit=100):
     df = df.sort_values('timestamp')
     return df
 
-def fetch_4h_ohlcv(symbol, limit=100):
+def fetch_5m_ohlcv(symbol, limit=100):
     """
-    Cached wrapper around fetch_4h_ohlcv_real.
+    Cached wrapper around fetch_5m_ohlcv_real.
     Prunes expired entries and uses cache if available.
     """
     # Remove expired cache entries first
@@ -158,7 +158,7 @@ def fetch_4h_ohlcv(symbol, limit=100):
         return OHLCV_CACHE[symbol][0]
 
     # Otherwise, fetch fresh data and cache it
-    df = api_cache_fetch("fetch_4h_ohlcv_real", symbol, limit)
+    df = api_cache_fetch("fetch_5m_ohlcv_real", symbol, limit)
     OHLCV_CACHE[symbol] = (df, datetime.utcnow())
     return df
 

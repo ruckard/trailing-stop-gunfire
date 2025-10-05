@@ -1,12 +1,12 @@
 import pandas as pd
 from utils import print_with_date
-from exchange.btse import fetch_4h_ohlcv  # temporary — will be configurable later
+from exchange.btse import fetch_5m_ohlcv  # temporary — will be configurable later
 from decimal import Decimal
 from trading.trend import calculate_atr
 
 def get_atr(symbol, period=14):
     try:
-        df = fetch_4h_ohlcv(symbol)
+        df = fetch_5m_ohlcv(symbol)
         if df is None or df.empty:
             print_with_date(f"[ATR] No candle data for {symbol}")
             return Decimal("0")
