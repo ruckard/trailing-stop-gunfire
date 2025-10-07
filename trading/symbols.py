@@ -131,6 +131,12 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
             score = trend_result["score"]
             stop_loss = trend_result["stop_loss"]
             state.TREND_STOP_LOSSES[symbol] = stop_loss
+        elif rank_type == 'EASY9':
+            raw_result = trend.calculate_easy_trend9_with_rsi(symbol)
+            trend_result = normalize_trend_result(raw_result)
+            score = trend_result["score"]
+            stop_loss = trend_result["stop_loss"]
+            state.TREND_STOP_LOSSES[symbol] = stop_loss
         else:
             raise ValueError(f"Unsupported rank_type: {rank_type}")
 

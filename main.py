@@ -238,7 +238,7 @@ def start_new_cycle(resume=False):
             base_symbols,
             long_top_number=MAXIMUM_LONG_TRADES_NUMBER,
             short_top_number=MAXIMUM_SHORT_TRADES_NUMBER,
-            rank_type='EASY8',
+            rank_type='EASY9',
             vol_bottom_percentile = state.VOL_BOTTOM_PERCENTILE,
             vol_top_percentile = state.VOL_TOP_PERCENTILE
         )
