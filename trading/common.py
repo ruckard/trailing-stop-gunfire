@@ -111,3 +111,31 @@ def compute_contracts_from_prices(symbols, contract_sizes):
     print_with_date(f"[SIZING] Final TotalNotional={total_notional()}, TargetBudget={target_budget}")
     return final_contracts_map, max_expected_loss
 
+def get_dynamic_trade_max_candles(symbol, score, base_max=36):
+    """
+    Dynamically determine how many candles a trade is allowed to stay open
+    based on its latest trend score.
+
+    Returns an integer number of candles, rounded to the nearest multiple of 3.
+
+    36 5-minute candles is the maximum which equals to 3 hours
+    """
+    try:
+
+        # Normalize score (abs to handle short/long symmetry)
+        strength = abs(score)
+
+        # Base relationship: higher trend strength = more candles allowed
+        # Example: score 0.0 -> 6 candles, score 1.0 -> 36 candles
+        max_candles = int(6 + (strength * (base_max - 6)))
+
+        # Smooth to nearest multiple of 3 (so it’s aligned to candle groups)
+        max_candles = round(max_candles / 3) * 3
+
+        # Enforce upper limit
+        max_candles = min(max_candles, base_max)
+
+        return max_candles
+    except Exception as e:
+        print_with_date(f"[WARN] get_dynamic_trade_max_candles failed for {symbol}: {e}")
+        return base_max // 2  # fallback: 18 candles (≈1.5h)
