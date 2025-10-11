@@ -4,7 +4,7 @@ from utils import print_with_date, debug
 import numpy as np
 import state
 import db.positions as positionsdb
-from trading.orders import get_dynamic_trade_max_candles
+from trading.common import get_dynamic_trade_max_candles
 
 TRENDRANGE_CACHE = {}
 
