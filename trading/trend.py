@@ -20,7 +20,8 @@ def place_trend_positions(symbol, sides):
             if result is None or result[0] is None or result[1] is None or result[2] is None:
                 print_with_date(f"[ERROR] Failed to place trailing stop for {symbol} {side} at {callback}%")
                 continue
-            pos_id, opening_order_id, closing_order_id, opening_price, trail_value = result
+            pos_id, opening_order_id, closing_order_id, opening_price, trail_value, score = result
+            max_candles = get_dynamic_trade_max_candles(symbol, score)
             state.positions[symbol][pid] = {
                 "position_id": pos_id,
                 "opening_order_id": opening_order_id,
@@ -30,7 +31,8 @@ def place_trend_positions(symbol, sides):
                 "active": True,
                 "opening_price" : opening_price,
                 "trail_value" : trail_value,
-                "opened_at": time.time()
+                "opened_at": time.time(),
+                "max_candles": max_candles
             }
             position_info = state.positions[symbol][pid]
             positionsdb.update_position(pid, position_info, symbol)

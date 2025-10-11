@@ -302,6 +302,7 @@ def check_positions(symbol):
                             "active": True,
                             "opening_price" : opening_price,
                             "trail_value" : trail_value,
+                            "opened_at": time.time(),
                             "max_candles": max_candles
                         }
                         position_info = state.positions[symbol][pid]
@@ -327,6 +328,7 @@ def check_positions(symbol):
                             "active": True,
                             "opening_price" : opening_price,
                             "trail_value" : trail_value,
+                            "opened_at": time.time(),
                             "max_candles": max_candles
                         }
                         position_info = state.positions[symbol][pid]
@@ -366,6 +368,7 @@ def check_positions(symbol):
                             "active": True,
                             "opening_price" : opening_price,
                             "trail_value" : trail_value,
+                            "opened_at": time.time(),
                             "max_candles": max_candles
                         }
                         position_info = state.positions[symbol][pid]
@@ -391,6 +394,7 @@ def check_positions(symbol):
                             "active": True,
                             "opening_price" : opening_price,
                             "trail_value" : trail_value,
+                            "opened_at": time.time(),
                             "max_candles": max_candles
                         }
                         position_info = state.positions[symbol][pid]
