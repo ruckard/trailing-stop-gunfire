@@ -11,6 +11,7 @@ import db.positions as positionsdb
 from trading.positions import get_position_status, get_trade_by_closing_order_id
 from trading.trend import place_trend_positions
 from trading.range import place_range_positions
+from trading.common import get_dynamic_trade_max_candles
 
 def build_trailing_stops_map():
     result = {}
@@ -188,35 +189,6 @@ def place_all_positions(symbol, sides=("LONG", "SHORT")):
         #place_range_positions(symbol, sides, entry_offset_pct=state.RANGE_ENTRY_OFFSET_PCT, take_profit_pct=state.RANGE_TAKE_PROFIT_PCT, stop_loss_pct=state.RANGE_STOP_LOSS_PCT)
     else:
         print_with_date(f"[SKIP] Could not classify trend/range for {symbol}")
-
-def get_dynamic_trade_max_candles(symbol, score, base_max=36):
-    """
-    Dynamically determine how many candles a trade is allowed to stay open
-    based on its latest trend score.
-
-    Returns an integer number of candles, rounded to the nearest multiple of 3.
-
-    36 5-minute candles is the maximum which equals to 3 hours
-    """
-    try:
-
-        # Normalize score (abs to handle short/long symmetry)
-        strength = abs(score)
-
-        # Base relationship: higher trend strength = more candles allowed
-        # Example: score 0.0 -> 6 candles, score 1.0 -> 36 candles
-        max_candles = int(6 + (strength * (base_max - 6)))
-
-        # Smooth to nearest multiple of 3 (so it’s aligned to candle groups)
-        max_candles = round(max_candles / 3) * 3
-
-        # Enforce upper limit
-        max_candles = min(max_candles, base_max)
-
-        return max_candles
-    except Exception as e:
-        print_with_date(f"[WARN] get_dynamic_trade_max_candles failed for {symbol}: {e}")
-        return base_max // 2  # fallback: 18 candles (≈1.5h)
 
 # === Check and Manage Positions ===
 def check_positions(symbol):
