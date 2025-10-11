@@ -148,6 +148,7 @@ state.CONTRACTS_MAP = {}
 state.CONTRACT_SIZES = {}
 state.MIN_PRICE_INCREMENTS = {}
 state.TREND_STOP_LOSSES = {}
+state.TREND_SCORES_TMP = {}
 
 state.LAST_AVAILABLE_BALANCE = None
 

@@ -11,6 +11,7 @@ import db.positions as positionsdb
 from trading.positions import get_position_status, get_trade_by_closing_order_id
 from trading.trend import place_trend_positions
 from trading.range import place_range_positions
+from trading.common import get_dynamic_trade_max_candles
 
 def build_trailing_stops_map():
     result = {}
@@ -57,7 +58,7 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
         current_price = exchange.get_current_price(symbol)
         if not current_price:
             print_with_date("[ERROR] Failed to get current price.")
-            return None, None, None, None, None
+            return None, None, None, None, None, None
         callback_rate_float = float(callback_rate)
 
         min_price_increment = state.MIN_PRICE_INCREMENTS.get(symbol)
@@ -94,6 +95,8 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
             market_order["stopLossPrice"] = float(custom_sl)
             market_order["stopLossTrigger"] = "lastPrice"
 
+        score = state.TREND_SCORES_TMP.get(symbol)
+
         market_body_str = json.dumps(market_order, separators=(',', ':'))
         market_sig = exchange.generate_signature(API_SECRET, url_path, nonce, market_body_str)
         market_headers = {
@@ -111,12 +114,12 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
         market_data = market_response.json()
         if not isinstance(market_data, list) or not market_data:
             print_with_date("[ERROR] Unexpected market order response.")
-            return None, None, None, None, None
+            return None, None, None, None, None, None
 
         position_id = market_data[0].get('positionId')
         if not position_id:
             print_with_date("[ERROR] Missing position ID.")
-            return None, None, None, None, None
+            return None, None, None, None, None, None
 
         opening_order_id = market_data[0].get('orderID')
         opening_price = market_data[0].get('price')
@@ -156,13 +159,13 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
 
         if not closing_order_id:
             print_with_date("[ERROR] Missing trailing stop order ID.")
-            return None, None, None, None, None
+            return None, None, None, None, None, None
 
         print_with_date(f"[NEW] [TRAILING] {symbol} | {position_side} | Callback: {callback_rate}%")
-        return position_id, opening_order_id, closing_order_id, opening_price, trail_value
+        return position_id, opening_order_id, closing_order_id, opening_price, trail_value, score
     except Exception as e:
         print_with_date(f"[ERROR] Failed to place TRAILING STOP order: {e}")
-        return None, None, None, None, None
+        return None, None, None, None, None, None
 
 # === Place All Positions ===
 def place_all_positions(symbol, sides=("LONG", "SHORT")):
@@ -195,8 +198,16 @@ def check_positions(symbol):
 
         opened_at = info.get("opened_at")
         if opened_at:
+            # Position max_candles
+            position_max_candles = info.get("max_candles")
+            if position_max_candles:
+                if (position_max_candles > 36):
+                    position_max_candles = 36
+            else:
+                position_max_candles = 36
+
             elapsed_minutes = (time.time() - opened_at) / 60
-            if elapsed_minutes >= state.TRADE_MAX_CANDLES * state.CANDLE_INTERVAL_MINUTES:
+            if elapsed_minutes >= position_max_candles * state.CANDLE_INTERVAL_MINUTES:
                 print_with_date(f"[TIMEOUT] Closing {symbol} {pid} after {elapsed_minutes:.1f} minutes.")
                 # Code to close the position immediately:
                 exchange.close_position(symbol, info)  # You'll need to implement or call your existing close logic
@@ -251,8 +262,9 @@ def check_positions(symbol):
                 if state.REOPEN_ON_WIN:
                     print_with_date(f"[WIN] Reopening {symbol} {pid}")
                     contracts = state.CONTRACTS_MAP.get(symbol, 1)
-                    new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
+                    new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value, score = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
                     if new_pos_id and new_closing_order_id:
+                        max_candles = get_dynamic_trade_max_candles(symbol, score)
                         state.positions[symbol][pid] = {
                             "position_id": new_pos_id,
                             "opening_order_id": new_opening_order_id,
@@ -261,7 +273,9 @@ def check_positions(symbol):
                             "callback": info["callback"],
                             "active": True,
                             "opening_price" : opening_price,
-                            "trail_value" : trail_value
+                            "trail_value" : trail_value,
+                            "opened_at": time.time(),
+                            "max_candles": max_candles
                         }
                         position_info = state.positions[symbol][pid]
                         positionsdb.update_position(pid, position_info, symbol)
@@ -274,8 +288,9 @@ def check_positions(symbol):
                 if state.REOPEN_ON_BREAKEVEN:
                     print_with_date(f"[BREAKEVEN] Reopening {symbol} {pid}")
                     contracts = state.CONTRACTS_MAP.get(symbol, 1)
-                    new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
+                    new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value, score = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
                     if new_pos_id and new_closing_order_id:
+                        max_candles = get_dynamic_trade_max_candles(symbol, score)
                         state.positions[symbol][pid] = {
                             "position_id": new_pos_id,
                             "opening_order_id": new_opening_order_id,
@@ -284,7 +299,9 @@ def check_positions(symbol):
                             "callback": info["callback"],
                             "active": True,
                             "opening_price" : opening_price,
-                            "trail_value" : trail_value
+                            "trail_value" : trail_value,
+                            "opened_at": time.time(),
+                            "max_candles": max_candles
                         }
                         position_info = state.positions[symbol][pid]
                         positionsdb.update_position(pid, position_info, symbol)
@@ -311,8 +328,9 @@ def check_positions(symbol):
                 if state.REOPEN_ON_WIN:
                     print_with_date(f"[WIN] Reopening {symbol} {pid}")
                     contracts = state.CONTRACTS_MAP.get(symbol, 1)
-                    new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
+                    new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value, score = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
                     if new_pos_id and new_closing_order_id:
+                        max_candles = get_dynamic_trade_max_candles(symbol, score)
                         state.positions[symbol][pid] = {
                             "position_id": new_pos_id,
                             "opening_order_id": new_opening_order_id,
@@ -321,7 +339,9 @@ def check_positions(symbol):
                             "callback": info["callback"],
                             "active": True,
                             "opening_price" : opening_price,
-                            "trail_value" : trail_value
+                            "trail_value" : trail_value,
+                            "opened_at": time.time(),
+                            "max_candles": max_candles
                         }
                         position_info = state.positions[symbol][pid]
                         positionsdb.update_position(pid, position_info, symbol)
@@ -334,8 +354,9 @@ def check_positions(symbol):
                 if state.REOPEN_ON_BREAKEVEN:
                     print_with_date(f"[BREAKEVEN] Reopening {symbol} {pid}")
                     contracts = state.CONTRACTS_MAP.get(symbol, 1)
-                    new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
+                    new_pos_id, new_opening_order_id, new_closing_order_id, opening_price, trail_value, score = place_trailing_stop(symbol, info["side"], info["callback"], contracts)
                     if new_pos_id and new_closing_order_id:
+                        max_candles = get_dynamic_trade_max_candles(symbol, score)
                         state.positions[symbol][pid] = {
                             "position_id": new_pos_id,
                             "opening_order_id": new_opening_order_id,
@@ -344,7 +365,9 @@ def check_positions(symbol):
                             "callback": info["callback"],
                             "active": True,
                             "opening_price" : opening_price,
-                            "trail_value" : trail_value
+                            "trail_value" : trail_value,
+                            "opened_at": time.time(),
+                            "max_candles": max_candles
                         }
                         position_info = state.positions[symbol][pid]
                         positionsdb.update_position(pid, position_info, symbol)

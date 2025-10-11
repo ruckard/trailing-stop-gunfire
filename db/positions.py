@@ -23,6 +23,7 @@ def init():
             trail_value REAL,
             symbol TEXT,
             opened_at REAL,
+            max_candles INTEGER,
             PRIMARY KEY (pid, symbol)
         )
     ''')
@@ -59,11 +60,17 @@ def update_position(pid, info, symbol):
     else:
         opened_at = info["opened_at"]
 
+    # Undefined max_candles workaround
+    if "max_candles" not in info:
+        max_candles = 36
+    else:
+        max_candles = info["max_candles"]
+
     conn = sqlite3.connect(state.DB_PATH)
     c = conn.cursor()
     c.execute('''
-        INSERT INTO positions (pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, symbol, opened_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO positions (pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, symbol, opened_at, max_candles)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(pid, symbol) DO UPDATE SET
             position_id=excluded.position_id,
             opening_order_id=excluded.opening_order_id,
@@ -74,18 +81,19 @@ def update_position(pid, info, symbol):
             opening_price=excluded.opening_price,
             trail_value=excluded.trail_value,
             symbol=excluded.symbol,
-            opened_at=excluded.opened_at
-    ''', (pid, info['position_id'], info['opening_order_id'], info['closing_order_id'], info['side'], float(callback), bool_to_int(info['active']), opening_price, trail_value, symbol, opened_at))
+            opened_at=excluded.opened_at,
+            max_candles=excluded.max_candles
+    ''', (pid, info['position_id'], info['opening_order_id'], info['closing_order_id'], info['side'], float(callback), bool_to_int(info['active']), opening_price, trail_value, symbol, opened_at, max_candles))
     conn.commit()
     conn.close()
 
 def load_positions(symbol):
     conn = sqlite3.connect(state.DB_PATH)
     c = conn.cursor()
-    c.execute(f"SELECT pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, opened_at FROM positions WHERE symbol = \"{symbol}\"")
+    c.execute(f"SELECT pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, opened_at, max_candles FROM positions WHERE symbol = \"{symbol}\"")
     rows = c.fetchall()
     conn.close()
-    for pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, opened_at in rows:
+    for pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, opened_at, max_candles in rows:
         state.positions[symbol][pid] = {
             "position_id": position_id,
             "opening_order_id": opening_order_id,
@@ -95,6 +103,7 @@ def load_positions(symbol):
             "active": int_to_bool(active),
             "trail_value": trail_value,
             "opened_at": opened_at,
+            "max_candles": max_candles,
         }
 
 def clear_positions(symbol):

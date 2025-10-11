@@ -137,6 +137,7 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
             score = trend_result["score"]
             stop_loss = trend_result["stop_loss"]
             state.TREND_STOP_LOSSES[symbol] = stop_loss
+            state.TREND_SCORES_TMP[symbol] = score
         else:
             raise ValueError(f"Unsupported rank_type: {rank_type}")
 
