@@ -37,4 +37,5 @@ CLIENT_NAME = None
 check_sleep_start = None
 
 TREND_STOP_LOSSES = None
+TREND_SCORES_TMP = None
 fib_level = None
