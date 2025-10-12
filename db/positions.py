@@ -70,7 +70,7 @@ def update_position(pid, info, symbol):
     c = conn.cursor()
     c.execute('''
         INSERT INTO positions (pid, position_id, opening_order_id, closing_order_id, side, callback, active, opening_price, trail_value, symbol, opened_at, max_candles)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(pid, symbol) DO UPDATE SET
             position_id=excluded.position_id,
             opening_order_id=excluded.opening_order_id,
