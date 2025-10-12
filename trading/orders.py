@@ -1,5 +1,5 @@
 from . import trend
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP, ROUND_HALF_DOWN
 from utils import print_with_date, debug
 
 from exchange import btse as exchange
@@ -92,6 +92,12 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
 
         custom_sl = state.TREND_STOP_LOSSES.get(symbol)
         if custom_sl is not None:
+            # Do not make the stop loss bigger when rounding
+            if (position_side == "SHORT"):
+                ROUND_SIDE=ROUND_HALF_DOWN
+            else:
+                ROUND_SIDE=ROUND_HALF_UP
+            custom_sl = Decimal(str(custom_sl)).quantize(Decimal(str(min_price_increment)), rounding=ROUND_SIDE)
             market_order["stopLossPrice"] = float(custom_sl)
             market_order["stopLossTrigger"] = "lastPrice"
 
