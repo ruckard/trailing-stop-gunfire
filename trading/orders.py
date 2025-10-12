@@ -92,6 +92,7 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
 
         custom_sl = state.TREND_STOP_LOSSES.get(symbol)
         if custom_sl is not None:
+            print_with_date(f"[DEBUG-CUSTOM-SL] {symbol} | {position_side} | custom_sl: {custom_sl}")
             # Do not make the stop loss bigger when rounding
             if (position_side == "SHORT"):
                 ROUND_SIDE=ROUND_HALF_DOWN
