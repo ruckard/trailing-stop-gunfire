@@ -6,6 +6,8 @@ import state
 from utils import print_with_date, debug
 from exchange import btse as exchange
 
+from decimal import Decimal, ROUND_HALF_UP, ROUND_HALF_DOWN
+
 def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
                           entry_offset_pct=0.5, take_profit_pct=0.7, stop_loss_pct=0.5):
     """
@@ -48,10 +50,40 @@ def place_range_positions(symbol, sides=("LONG", "SHORT"), lookback=50,
         print_with_date(f"[DEBUG-place_range_positions] (PRE-round) take_profit: {take_profit}")
         print_with_date(f"[DEBUG-place_range_positions] (PRE-round) stop_loss: {stop_loss}")
 
+        min_price_increment = state.MIN_PRICE_INCREMENTS.get(symbol)
+        if not min_price_increment:
+            raise ValueError(f"No min price increment found for {symbol}")
+
         # Ensure price decimal scale is the right one
         entry_price = round(entry_price, int(-math.log10(state.MIN_PRICE_INCREMENTS[symbol])))
         take_profit = round(take_profit, int(-math.log10(state.MIN_PRICE_INCREMENTS[symbol])))
         stop_loss = round(stop_loss, int(-math.log10(state.MIN_PRICE_INCREMENTS[symbol])))
+
+
+        # Long: Find a lower price to enter
+        # so that we have a better entry price
+        if (side == "SHORT"):
+            ENTRY_PRICE_ROUND_SIDE=ROUND_HALF_UP
+        else:
+            ENTRY_PRICE_ROUND_SIDE=ROUND_HALF_DOWN
+
+        # Long: Find a lower price to exit
+        # to exit even with less profit
+        if (side == "SHORT"):
+            TAKE_PROFIT_ROUND_SIDE=ROUND_HALF_UP
+        else:
+            TAKE_PROFIT_ROUND_SIDE=ROUND_HALF_DOWN
+
+        # Long: Find a higher price to exit
+        # to exit with less loss
+        if (side == "SHORT"):
+            STOP_LOSS_ROUND_SIDE=ROUND_HALF_DOWN
+        else:
+            STOP_LOSS_ROUND_SIDE=ROUND_HALF_UP
+
+        entry_price = Decimal(str(entry_price)).quantize(min_price_increment, rounding=ENTRY_PRICE_ROUND_SIDE)
+        take_profit = Decimal(str(take_profit)).quantize(min_price_increment, rounding=TAKE_PROFIT_ROUND_SIDE)
+        stop_loss  = Decimal(str(stop_loss)).quantize(min_price_increment, rounding=STOP_LOSS_ROUND_SIDE)
 
         print_with_date(f"[DEBUG-place_range_positions] (POST-round) side: {side}")
         print_with_date(f"[DEBUG-place_range_positions] (POST-round) entry_price: {entry_price}")
