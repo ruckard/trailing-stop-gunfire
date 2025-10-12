@@ -5,6 +5,7 @@ import numpy as np
 import state
 import db.positions as positionsdb
 from trading.common import get_dynamic_trade_max_candles
+import pandas as pd
 
 TRENDRANGE_CACHE = {}
 
@@ -95,6 +96,8 @@ def calculate_easy_trend9_with_rsi(symbol, lookback=50, rsi_period=14,
     """
 
     df = exchange.fetch_5m_ohlcv(symbol)
+    if (not isinstance(df, pd.DataFrame)):
+        return 0.0
     if df is None or df.empty or len(df) < lookback:
         return 0.0
 
@@ -231,6 +234,8 @@ def calculate_easy_trend8_with_rsi(symbol, lookback=50, rsi_period=14,
     """
 
     df = exchange.fetch_5m_ohlcv(symbol)
+    if (not isinstance(df, pd.DataFrame)):
+        return 0.0
     if df is None or df.empty or len(df) < lookback:
         return 0.0
 
@@ -348,6 +353,8 @@ def calculate_easy_trend7_with_rsi(symbol, lookback=50, rsi_period=14,
     """
 
     df = exchange.fetch_5m_ohlcv(symbol)
+    if (not isinstance(df, pd.DataFrame)):
+        return 0.0
     if df is None or df.empty or len(df) < lookback:
         return 0.0
 
@@ -459,6 +466,8 @@ def calculate_easy_trend6_with_rsi(symbol, lookback=50, rsi_period=14,
     """
 
     df = exchange.fetch_5m_ohlcv(symbol)
+    if (not isinstance(df, pd.DataFrame)):
+        return 0.0
     if df is None or df.empty or len(df) < lookback:
         return 0.0
 
@@ -537,6 +546,8 @@ def calculate_easy_trend5_with_rsi(symbol, lookback=50, rsi_period=14,
     """
 
     df = exchange.fetch_5m_ohlcv(symbol)
+    if (not isinstance(df, pd.DataFrame)):
+        return 0.0
     if df is None or df.empty or len(df) < lookback:
         return 0.0
 
@@ -616,6 +627,8 @@ def calculate_easy_trend4_with_rsi(symbol, lookback=50, rsi_period=14,
     """
 
     df = exchange.fetch_5m_ohlcv(symbol)
+    if (not isinstance(df, pd.DataFrame)):
+        return 0.0
     if df is None or df.empty or len(df) < lookback:
         return 0.0
 
@@ -700,6 +713,8 @@ def calculate_easy_trend3_with_rsi(symbol, lookback=50, rsi_period=14,
     """
 
     df = exchange.fetch_5m_ohlcv(symbol)
+    if (not isinstance(df, pd.DataFrame)):
+        return 0.0
     if df is None or df.empty or len(df) < lookback:
         return 0.0
 
@@ -780,6 +795,8 @@ def calculate_easy_trend2_with_rsi(symbol, lookback=50, rsi_period=14,
     """
 
     df = exchange.fetch_5m_ohlcv(symbol)
+    if (not isinstance(df, pd.DataFrame)):
+        return 0.0
     if df is None or df.empty or len(df) < lookback:
         return 0.0
 
@@ -863,6 +880,8 @@ def calculate_easy_trend_with_rsi(symbol, lookback=50, rsi_period=14,
     """
 
     df = exchange.fetch_5m_ohlcv(symbol)
+    if (not isinstance(df, pd.DataFrame)):
+        return 0.0
     if df is None or df.empty or len(df) < lookback:
         return 0.0
 
@@ -948,6 +967,8 @@ def calculate_trendest_with_rsi(symbol, lookback=50, rsi_period=14,
     """
 
     df = exchange.fetch_5m_ohlcv(symbol)
+    if (not isinstance(df, pd.DataFrame)):
+        return 0.0
     if df is None or df.empty or len(df) < lookback:
         return 0.0
 
@@ -1010,6 +1031,8 @@ def calculate_trend_with_rsi(symbol, lookback=50, rsi_period=14, rsi_low_percent
 
     # Fetch candles using the cached function
     df = exchange.fetch_5m_ohlcv(symbol)
+    if (not isinstance(df, pd.DataFrame)):
+        return 0.0
     if df is None or df.empty or len(df) < lookback:
         return 0.0
 
