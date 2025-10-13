@@ -201,19 +201,19 @@ def calculate_easy_trend9_with_rsi(symbol, lookback=50, rsi_period=14,
     # --- Relaxed breakout / retrace conditions
     if slope_normalized > 0:
         if np.max(late_values) > early_high * 1.005:  # allow 0.5% breakout
-            print_with_date(f"[{symbol}] Discarded LONG: breakout above early high")
+            debug(f"[{symbol}] Discarded LONG: breakout above early high")
             return 0.0
         if np.min(late_values) < fib_retrace_long * 0.995:  # allow wiggle room
-            print_with_date(f"[{symbol}] Discarded LONG: retraced below Fib tolerance")
+            debug(f"[{symbol}] Discarded LONG: retraced below Fib tolerance")
             return 0.0
         return {"score": float(slope_normalized), "stop_loss": fib_retrace_long}
 
     elif slope_normalized < 0:
         if np.min(late_values) < early_low * 0.995:  # allow 0.5% breakout
-            print_with_date(f"[{symbol}] Discarded SHORT: breakout below early low")
+            debug(f"[{symbol}] Discarded SHORT: breakout below early low")
             return 0.0
         if np.max(late_values) > fib_retrace_short * 1.005:
-            print_with_date(f"[{symbol}] Discarded SHORT: retraced above Fib tolerance")
+            debug(f"[{symbol}] Discarded SHORT: retraced above Fib tolerance")
             return 0.0
         return {"score": float(slope_normalized), "stop_loss": fib_retrace_short}
 
