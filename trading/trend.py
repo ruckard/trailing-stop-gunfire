@@ -154,7 +154,7 @@ def calculate_easy_trend9_with_rsi(symbol, lookback=50, rsi_period=14,
     ):
         return 0.0
 
-    print_with_date(
+    debug(
         f"[DEBUG EASY TREND9] {symbol} | AvgSlope={slope_normalized:.6f}, "
         f"First={first_candle:.4f}, Last={last_candle:.4f}, "
         f"PosCount={positive_count}, NegCount={negative_count}"
