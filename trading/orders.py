@@ -50,7 +50,7 @@ def update_trailing_stops_for_symbol(symbol):
         for i in range(trailing_count)
     ]
 
-    print_with_date(f"[UPDATED TRAILING STOPS] {symbol}: {state.TRAILING_STOPS_MAP[symbol]}")
+    debug(f"[UPDATED TRAILING STOPS] {symbol}: {state.TRAILING_STOPS_MAP[symbol]}")
 
 # === Place Trailing Stop Order on BTSE ===
 def place_trailing_stop(symbol, position_side, callback_rate, contracts):
