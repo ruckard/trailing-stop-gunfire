@@ -109,6 +109,7 @@ def calculate_easy_trend9_with_rsi(symbol, lookback=50, rsi_period=14,
         vol_ratio = atr / avg_price if avg_price != 0 else 0
         lookback = int(max(50, min(150, 100 * vol_ratio)))  # 50–150 range
     except Exception:
+        current_price = df['close'].iloc[-1] if not df.empty else 0.0
         pass
 
     # --- Use ohlc4 values
