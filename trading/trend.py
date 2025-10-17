@@ -206,7 +206,9 @@ def calculate_easy_trend9_with_rsi(symbol, lookback=50, rsi_period=14,
         if np.min(late_values) < fib_retrace_long * 0.995:  # allow wiggle room
             debug(f"[{symbol}] Discarded LONG: retraced below Fib tolerance")
             return 0.0
-        return {"score": float(slope_normalized), "stop_loss": fib_retrace_long}
+
+        advice_data["stop_loss"] = fib_retrace_long
+        return {"score": float(slope_normalized), "advice": advice_data}
 
     elif slope_normalized < 0:
         if np.min(late_values) < early_low * 0.995:  # allow 0.5% breakout
@@ -215,7 +217,9 @@ def calculate_easy_trend9_with_rsi(symbol, lookback=50, rsi_period=14,
         if np.max(late_values) > fib_retrace_short * 1.005:
             debug(f"[{symbol}] Discarded SHORT: retraced above Fib tolerance")
             return 0.0
-        return {"score": float(slope_normalized), "stop_loss": fib_retrace_short}
+
+        advice_data["stop_loss"] = fib_retrace_short
+        return {"score": float(slope_normalized), "advice": advice_data}
 
     return float(slope_normalized)
 
