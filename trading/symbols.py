@@ -171,6 +171,9 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
             trend_scores.pop(symbol, None)
             atr_percents.pop(symbol, None)
             state.TREND_STOP_LOSSES.pop(symbol, None)
+            state.TRAILING_TRIGGER_PRICES.pop(symbol, None)
+            state.TRAILING_LENGTHS.pop(symbol, None)
+            state.MINIMUM_TRAILING_LENGTHS.pop(symbol, None)
             continue  # Skip this symbol entirely
 
         atr_percent = (Decimal(str(atr)) / Decimal(str(price))) * Decimal("100")
