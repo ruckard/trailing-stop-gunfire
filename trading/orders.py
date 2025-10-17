@@ -18,6 +18,8 @@ from trading.analysis import (
     is_breakeven_from_trade,
 )
 
+import time
+
 def build_trailing_stops_map():
     result = {}
     for symbol, cfg in state.SYMBOL_CONFIGS.items():
@@ -106,6 +108,8 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
             market_order["stopLossPrice"] = float(custom_sl)
             market_order["stopLossTrigger"] = "lastPrice"
 
+            stop_loss_price = float(custom_sl)
+
         score = state.TREND_SCORES_TMP.get(symbol)
 
         market_body_str = json.dumps(market_order, separators=(',', ':'))
@@ -135,47 +139,53 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
         opening_order_id = market_data[0].get('orderID')
         opening_price = market_data[0].get('price')
 
-        debug(f"Placing TRAILING STOP order: {side} with trail {trail_value}")
+        # Wait for the market order to be executed
+        # before binding the TP/SL order
+        time.sleep(1)
+        #debug(f"Placing Bind TP/SL order for {side} | TP: {take_profit_price} | SL: {stop_loss_price}")
+        debug(f"Placing Bind TP/SL order for {side} | SL: {stop_loss_price}")
+
         nonce = str(int(time.time() * 1000))
-        trail_order = {
-            "postOnly": False,
-            "price": 0.0,
-            "reduceOnly": True,
-            "side": side,
-            "size": contracts,
+        url_path = '/api/v2.2/order/bind/tpsl'
+        full_url = BASE_URL + url_path
+
+        tpsl_order = {
             "symbol": symbol,
-            "time_in_force": "GTC",
-            "trailValue": -trail_value if side == "SELL" else trail_value,
-            "type": "MARKET",
-            "txType": "STOP",
+            "side": side,
+            #"takeProfitPrice": take_profit_price,
+            #"takeProfitTrigger": "markPrice",
+            "stopLossPrice": float(custom_sl),
+            "stopLossTrigger": "lastPrice",
             "positionMode": "ISOLATED",
             "positionId": position_id
         }
-        trail_body_str = json.dumps(trail_order, separators=(',', ':'))
-        trail_sig = exchange.generate_signature(API_SECRET, url_path, nonce, trail_body_str)
-        trail_headers = {
+
+        tpsl_body_str = json.dumps(tpsl_order, separators=(',', ':'))
+        tpsl_sig = exchange.generate_signature(API_SECRET, url_path, nonce, tpsl_body_str)
+        tpsl_headers = {
             'request-api': API_KEY,
             'request-nonce': nonce,
-            'request-sign': trail_sig,
+            'request-sign': tpsl_sig,
             'Content-Type': 'application/json'
         }
 
-        debug(f"TRAILING STOP order payload: {trail_body_str}")
-        trail_response = exchange.throttled_request('POST', full_url, headers=trail_headers, data=trail_body_str)
-        debug(f"TRAILING STOP response status: {trail_response.status_code}")
-        debug(f"TRAILING STOP response body: {trail_response.text}")
-        trail_response.raise_for_status()
-        trail_data = trail_response.json()
-        closing_order_id = trail_data[0].get("orderID") if trail_data else None
+        debug(f"Bind TP/SL payload: {tpsl_body_str}")
+        tpsl_response = exchange.throttled_request('POST', full_url, headers=tpsl_headers, data=tpsl_body_str)
+        debug(f"Bind TP/SL response status: {tpsl_response.status_code}")
+        debug(f"Bind TP/SL response body: {tpsl_response.text}")
+        tpsl_response.raise_for_status()
+        tpsl_data = tpsl_response.json()
+        closing_order_id = tpsl_data[0].get("orderID") if tpsl_data else None
 
         if not closing_order_id:
-            print_with_date("[ERROR] Missing trailing stop order ID.")
+            print_with_date("[ERROR] Missing TP/SL bind order ID.")
             return None, None, None, None, None, None
 
-        print_with_date(f"[NEW] [TRAILING] {symbol} | {position_side} | Callback: {callback_rate}%")
+        #print_with_date(f"[NEW] [BIND TP/SL] {symbol} | {position_side} | TP: {take_profit_price} | SL: {stop_loss_price}")
+        print_with_date(f"[NEW] [BIND TP/SL] {symbol} | {position_side} | SL: {stop_loss_price}")
         return position_id, opening_order_id, closing_order_id, opening_price, trail_value, score
     except Exception as e:
-        print_with_date(f"[ERROR] Failed to place TRAILING STOP order: {e}")
+        print_with_date(f"[ERROR] Failed to place BIND TP/SL order: {e}")
 
         # Extra debug info if variables exist
         if 'market_body_str' in locals():
@@ -187,13 +197,13 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
                 print_with_date(f"[ERROR-Debug] MARKET order response body: {market_response.text}")
 
         # Extra debug info if variables exist
-        if 'trail_body_str' in locals():
-            print_with_date(f"[ERROR-Debug] TRAILING STOP order payload: {trail_body_str}")
-        if 'trail_response' in locals() and trail_response is not None:
-            if hasattr(trail_response, 'status_code'):
-                print_with_date(f"[ERROR-Debug] TRAILING STOP response status: {trail_response.status_code}")
-            if hasattr(trail_response, 'text'):
-                print_with_date(f"[ERROR-Debug] TRAILING STOP response body: {trail_response.text}")
+        if 'tpsl_body_str' in locals():
+            print_with_date(f"[ERROR-Debug] BIND TP/SL order payload: {tpsl_body_str}")
+        if 'tpsl_response' in locals() and tpsl_response is not None:
+            if hasattr(tpsl_response, 'status_code'):
+                print_with_date(f"[ERROR-Debug] BIND TP/SL response status: {tpsl_response.status_code}")
+            if hasattr(tpsl_response, 'text'):
+                print_with_date(f"[ERROR-Debug] BIND TP/SL response body: {tpsl_response.text}")
         return None, None, None, None, None, None
 
 # === Place All Positions ===
@@ -408,3 +418,212 @@ def check_positions(symbol):
             else:
                 print_with_date(f"[LOSS] Not reopening {symbol} {pid}")
     return all_closed
+
+def update_trailing_stop_manual(symbol):
+    """
+    Manually update trailing stop orders for all active positions under a symbol.
+    Queries the current bind order stop loss, decides whether to move it,
+    cancels the old bind order, and creates a new one.
+    """
+
+    if symbol not in state.positions:
+        debug(f"[TRAIL] No positions found for {symbol}")
+        return
+
+    # === 1. Get current price ===
+    try:
+        current_price = exchange.get_current_price(symbol)
+    except Exception as e:
+        print_with_date(f"[ERROR] Failed to fetch current price for {symbol}: {e}")
+        return
+
+    if not current_price:
+        print_with_date(f"[ERROR] Could not fetch price for {symbol}. Skipping trailing update.")
+        return
+
+    current_price_dec = Decimal(str(current_price))
+
+    for pid, info in state.positions[symbol].items():
+        if not info.get("active"):
+            continue
+
+        position_id = info.get("position_id")
+        bind_order_id = info.get("closing_order_id")
+        position_side = info.get("side")
+
+        if not (position_id and bind_order_id and position_side):
+            debug(f"[TRAIL] Missing critical data for {symbol} {pid}. Skipping.")
+            continue
+
+        # === 2. Query current bind order ===
+        query_url_path = '/api/v2.2/order'
+        query_full_url = BASE_URL + query_url_path
+        query_params = {"orderID": bind_order_id}
+        query_nonce = str(int(time.time() * 1000))
+        query_sig = exchange.generate_signature(API_SECRET, query_url_path, query_nonce, '')
+        query_headers = {
+            'request-api': API_KEY,
+            'request-nonce': query_nonce,
+            'request-sign': query_sig
+        }
+
+        order_response = None
+        try:
+            order_response = exchange.throttled_request('GET', query_full_url, headers=query_headers, params=query_params)
+            order_response.raise_for_status()
+            order_data = order_response.json()
+
+            # Extract stop loss info
+            stop_loss_price = None
+            if "triggerPrice" in order_data:
+                stop_loss_price = order_data.get("triggerPrice")
+
+            if not stop_loss_price:
+                debug(f"[TRAIL] Could not extract stop loss for {symbol} {pid}. Skipping.")
+                continue
+
+            initial_sl = Decimal(str(stop_loss_price))
+
+        except Exception as e:
+            print_with_date(f"[ERROR] Failed to query current bind order for {symbol}: {e}")
+
+            # === Extra debug info for query ===
+            if 'query_headers' in locals():
+                print_with_date(f"[ERROR-Debug] QUERY headers: {query_headers}")
+            if order_response is not None:
+                if hasattr(order_response, 'status_code'):
+                    print_with_date(f"[ERROR-Debug] QUERY response status: {order_response.status_code}")
+                if hasattr(order_response, 'text'):
+                    print_with_date(f"[ERROR-Debug] QUERY response body: {order_response.text}")
+            continue  # Move on to next position
+
+        # === 3. Compute new stop loss ===
+        trailing_trigger = state.TRAILING_TRIGGER_PRICES.get(symbol)
+        trailing_length = state.TRAILING_LENGTHS.get(symbol)
+        minimum_trail = state.MINIMUM_TRAILING_LENGTHS.get(symbol)
+        min_price_increment = state.MIN_PRICE_INCREMENTS.get(symbol)
+
+        if None in [trailing_trigger, trailing_length, minimum_trail, min_price_increment]:
+            debug(f"[TRAIL] Missing trailing params for {symbol}. Skipping {pid}.")
+            continue
+
+        precision = abs(Decimal(str(min_price_increment)).as_tuple().exponent)
+        trail_trigger = Decimal(str(trailing_trigger))
+        trail_len = Decimal(str(trailing_length))
+        min_trail_len = Decimal(str(minimum_trail))
+
+        update_needed = False
+        if position_side == "LONG" and current_price_dec > trail_trigger + trail_len:
+            update_needed = True
+        elif position_side == "SHORT" and current_price_dec < trail_trigger - trail_len:
+            update_needed = True
+
+        if not update_needed:
+            debug(f"[TRAIL] {symbol} {pid}: No update needed. Price={current_price_dec}, Trigger={trail_trigger}")
+            continue
+
+        if position_side == "LONG":
+            new_sl = current_price_dec - trail_len
+            ROUND_SIDE = ROUND_HALF_UP
+        else:
+            new_sl = current_price_dec + trail_len
+            ROUND_SIDE = ROUND_HALF_DOWN
+
+        if abs(new_sl - initial_sl) < min_trail_len:
+            debug(f"[TRAIL] {symbol} {pid}: Move {abs(new_sl - initial_sl)} < min trail {min_trail_len}. Skipping.")
+            continue
+
+        new_sl = new_sl.quantize(Decimal(str(min_price_increment)), rounding=ROUND_SIDE)
+        new_sl_float = float(new_sl)
+
+        debug(f"[TRAIL] {symbol} {pid} | New SL {new_sl_float} (was {initial_sl})")
+
+        # === 4. Cancel old bind order ===
+        cancel_url_path = '/api/v2.2/order'
+        cancel_full_url = BASE_URL + cancel_url_path
+        cancel_params = {"symbol": symbol, "orderID": bind_order_id}
+        cancel_nonce = str(int(time.time() * 1000))
+        cancel_sig = exchange.generate_signature(API_SECRET, cancel_url_path, cancel_nonce, '')
+        cancel_headers = {
+            'request-api': API_KEY,
+            'request-nonce': cancel_nonce,
+            'request-sign': cancel_sig,
+        }
+
+        cancel_response = None
+        try:
+            cancel_response = exchange.throttled_request(
+                'DELETE',
+                cancel_full_url,
+                headers=cancel_headers,
+                params=cancel_params
+            )
+            cancel_response.raise_for_status()
+        except Exception as e:
+            print_with_date(f"[ERROR] Failed to cancel bind order {bind_order_id} for {symbol}: {e}")
+
+            # === Extra debug info for cancel ===
+            if 'cancel_params' in locals():
+                print_with_date(f"[ERROR-Debug] CANCEL order payload: {cancel_params}")
+            if 'cancel_headers' in locals():
+                print_with_date(f"[ERROR-Debug] CANCEL headers: {cancel_headers}")
+            if cancel_response is not None:
+                if hasattr(cancel_response, 'status_code'):
+                    print_with_date(f"[ERROR-Debug] CANCEL response status: {cancel_response.status_code}")
+                if hasattr(cancel_response, 'text'):
+                    print_with_date(f"[ERROR-Debug] CANCEL response body: {cancel_response.text}")
+
+            continue  # skip to next position if cancel failed
+
+        # === 5. Create new bind order ===
+        side = "BUY" if position_side == "SHORT" else "SELL"
+        tpsl_url_path = '/api/v2.2/order/bind/tpsl'
+        tpsl_full_url = BASE_URL + tpsl_url_path
+        tpsl_nonce = str(int(time.time() * 1000))
+
+        tpsl_order = {
+            "symbol": symbol,
+            "side": side,
+            "stopLossPrice": new_sl_float,
+            "stopLossTrigger": "lastPrice",
+            "positionMode": "ISOLATED",
+            "positionId": position_id
+        }
+
+        tpsl_body_str = json.dumps(tpsl_order, separators=(',', ':'))
+        tpsl_sig = exchange.generate_signature(API_SECRET, tpsl_url_path, tpsl_nonce, tpsl_body_str)
+        tpsl_headers = {
+            'request-api': API_KEY,
+            'request-nonce': tpsl_nonce,
+            'request-sign': tpsl_sig,
+            'Content-Type': 'application/json'
+        }
+
+        tpsl_response = None
+        try:
+            tpsl_response = exchange.throttled_request('POST', tpsl_full_url, headers=tpsl_headers, data=tpsl_body_str)
+            tpsl_response.raise_for_status()
+            tpsl_data = tpsl_response.json()
+            new_bind_order_id = tpsl_data[0].get("orderID") if tpsl_data else None
+
+            if not new_bind_order_id:
+                print_with_date(f"[ERROR] Missing new bind order ID for {symbol} {pid}.")
+                continue
+
+            info["closing_order_id"] = new_bind_order_id
+            positionsdb.update_position(pid, info, symbol)
+            state.TRAILING_TRIGGER_PRICES[symbol] = float(current_price_dec)
+
+            print_with_date(f"[TRAIL] Updated {symbol} {pid} | {position_side} | SL={new_sl_float}")
+
+        except Exception as e:
+            print_with_date(f"[ERROR] Failed to create new BIND TP/SL order for {symbol}: {e}")
+
+            if 'tpsl_body_str' in locals():
+                print_with_date(f"[ERROR-Debug] BIND TP/SL order payload: {tpsl_body_str}")
+            if tpsl_response is not None:
+                if hasattr(tpsl_response, 'status_code'):
+                    print_with_date(f"[ERROR-Debug] BIND TP/SL response status: {tpsl_response.status_code}")
+                if hasattr(tpsl_response, 'text'):
+                    print_with_date(f"[ERROR-Debug] BIND TP/SL response body: {tpsl_response.text}")
+            continue

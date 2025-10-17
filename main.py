@@ -53,6 +53,7 @@ from trading.orders import (
     place_all_positions,
     place_trend_positions,
     check_positions,
+    update_trailing_stop_manual,
 )
 
 from trading.symbols import (
@@ -143,6 +144,9 @@ state.CONTRACTS_MAP = {}
 state.CONTRACT_SIZES = {}
 state.MIN_PRICE_INCREMENTS = {}
 state.TREND_STOP_LOSSES = {}
+state.TRAILING_TRIGGER_PRICES = {}
+state.TRAILING_LENGTHS = {}
+state.MINIMUM_TRAILING_LENGTHS = {}
 state.TREND_SCORES_TMP = {}
 
 state.LAST_AVAILABLE_BALANCE = None
@@ -304,6 +308,7 @@ def run_main_loop():
 
             if symbols is not None:
                 for symbol in symbols:
+                    update_trailing_stop_manual(symbol)
                     if not check_positions(symbol):
                         batch_all_closed = False
 

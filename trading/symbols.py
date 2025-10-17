@@ -129,14 +129,29 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
             raw_result = trend.calculate_easy_trend8_with_rsi(symbol)
             trend_result = normalize_trend_result(raw_result)
             score = trend_result["score"]
-            stop_loss = trend_result["stop_loss"]
-            state.TREND_STOP_LOSSES[symbol] = stop_loss
+            stop_loss = trend_result.get("advice", {}).get("stop_loss")
+            if stop_loss is not None:
+                state.TREND_STOP_LOSSES[symbol] = stop_loss
         elif rank_type == 'EASY9':
             raw_result = trend.calculate_easy_trend9_with_rsi(symbol)
             trend_result = normalize_trend_result(raw_result)
             score = trend_result["score"]
-            stop_loss = trend_result["stop_loss"]
-            state.TREND_STOP_LOSSES[symbol] = stop_loss
+
+            advice = trend_result.get("advice", {})
+            stop_loss = advice.get("stop_loss")
+            trailing_trigger_price = advice.get("trailing_trigger_price")
+            trailing_length = advice.get("trailing_length")
+            minimum_trailing_length = advice.get("minimum_trailing_length")
+
+            if stop_loss is not None:
+                state.TREND_STOP_LOSSES[symbol] = stop_loss
+            if trailing_trigger_price is not None:
+                state.TRAILING_TRIGGER_PRICES[symbol] = trailing_trigger_price
+            if trailing_length is not None:
+                state.TRAILING_LENGTHS[symbol] = trailing_length
+            if minimum_trailing_length is not None:
+                state.MINIMUM_TRAILING_LENGTHS[symbol] = minimum_trailing_length
+
             state.TREND_SCORES_TMP[symbol] = score
         else:
             raise ValueError(f"Unsupported rank_type: {rank_type}")
@@ -156,6 +171,9 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
             trend_scores.pop(symbol, None)
             atr_percents.pop(symbol, None)
             state.TREND_STOP_LOSSES.pop(symbol, None)
+            state.TRAILING_TRIGGER_PRICES.pop(symbol, None)
+            state.TRAILING_LENGTHS.pop(symbol, None)
+            state.MINIMUM_TRAILING_LENGTHS.pop(symbol, None)
             continue  # Skip this symbol entirely
 
         atr_percent = (Decimal(str(atr)) / Decimal(str(price))) * Decimal("100")

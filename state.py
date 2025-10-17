@@ -37,5 +37,8 @@ CLIENT_NAME = None
 check_sleep_start = None
 
 TREND_STOP_LOSSES = None
+TRAILING_TRIGGER_PRICES = None
+TRAILING_LENGTHS = None
+MINIMUM_TRAILING_LENGTHS = None
 TREND_SCORES_TMP = None
 fib_level = None
