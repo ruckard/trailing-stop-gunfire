@@ -198,6 +198,17 @@ def calculate_easy_trend9_with_rsi(symbol, lookback=50, rsi_period=14,
     fib_retrace_long = early_high - (1 - state.FIB_LEVEL) * (early_high - early_low)
     fib_retrace_short = early_low + (1 - state.FIB_LEVEL) * (early_high - early_low)
 
+    # === Common trailing parameters ===
+    minimum_trailing_length = 0.0025 * current_price  # 0.25% safety floor
+    trailing_length = max(0.8 * atr, minimum_trailing_length)
+
+    advice_data["minimum_trailing_length"] = minimum_trailing_length
+    advice_data["trailing_length"] = trailing_length
+
+    # === LONG/SHORT side trailing parameters ===
+    long_trailing_trigger_price = current_price + (current_price - fib_retrace_long)  # ≈ +1R profit
+    short_trailing_trigger_price = current_price - (fib_retrace_short - current_price)  # ≈ +1R profit
+
     # --- Relaxed breakout / retrace conditions
     if slope_normalized > 0:
         if np.max(late_values) > early_high * 1.005:  # allow 0.5% breakout
@@ -207,6 +218,7 @@ def calculate_easy_trend9_with_rsi(symbol, lookback=50, rsi_period=14,
             debug(f"[{symbol}] Discarded LONG: retraced below Fib tolerance")
             return 0.0
 
+        advice_data["trailing_trigger_price"] = long_trailing_trigger_price
         advice_data["stop_loss"] = fib_retrace_long
         return {"score": float(slope_normalized), "advice": advice_data}
 
@@ -218,6 +230,7 @@ def calculate_easy_trend9_with_rsi(symbol, lookback=50, rsi_period=14,
             debug(f"[{symbol}] Discarded SHORT: retraced above Fib tolerance")
             return 0.0
 
+        advice_data["trailing_trigger_price"] = short_trailing_trigger_price
         advice_data["stop_loss"] = fib_retrace_short
         return {"score": float(slope_normalized), "advice": advice_data}
 
