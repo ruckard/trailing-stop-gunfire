@@ -185,7 +185,7 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
         print_with_date(f"[NEW] [BIND TP/SL] {symbol} | {position_side} | SL: {stop_loss_price}")
         return position_id, opening_order_id, closing_order_id, opening_price, trail_value, score
     except Exception as e:
-        print_with_date(f"[ERROR] Failed to place TRAILING STOP order: {e}")
+        print_with_date(f"[ERROR] Failed to place BIND TP/SL order: {e}")
 
         # Extra debug info if variables exist
         if 'market_body_str' in locals():
@@ -197,13 +197,13 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
                 print_with_date(f"[ERROR-Debug] MARKET order response body: {market_response.text}")
 
         # Extra debug info if variables exist
-        if 'trail_body_str' in locals():
-            print_with_date(f"[ERROR-Debug] TRAILING STOP order payload: {trail_body_str}")
-        if 'trail_response' in locals() and trail_response is not None:
-            if hasattr(trail_response, 'status_code'):
-                print_with_date(f"[ERROR-Debug] TRAILING STOP response status: {trail_response.status_code}")
-            if hasattr(trail_response, 'text'):
-                print_with_date(f"[ERROR-Debug] TRAILING STOP response body: {trail_response.text}")
+        if 'tpsl_body_str' in locals():
+            print_with_date(f"[ERROR-Debug] BIND TP/SL order payload: {tpsl_body_str}")
+        if 'tpsl_response' in locals() and tpsl_response is not None:
+            if hasattr(tpsl_response, 'status_code'):
+                print_with_date(f"[ERROR-Debug] BIND TP/SL response status: {tpsl_response.status_code}")
+            if hasattr(tpsl_response, 'text'):
+                print_with_date(f"[ERROR-Debug] BIND TP/SL response body: {tpsl_response.text}")
         return None, None, None, None, None, None
 
 # === Place All Positions ===
