@@ -135,44 +135,45 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
         opening_order_id = market_data[0].get('orderID')
         opening_price = market_data[0].get('price')
 
-        debug(f"Placing TRAILING STOP order: {side} with trail {trail_value}")
+        debug(f"Placing Bind TP/SL order for {side} | TP: {take_profit_price} | SL: {stop_loss_price}")
+
         nonce = str(int(time.time() * 1000))
-        trail_order = {
-            "postOnly": False,
-            "price": 0.0,
-            "reduceOnly": True,
-            "side": side,
-            "size": contracts,
+        url_path = '/api/v2.2/order/bind/tpsl'
+        full_url = BASE_URL + url_path
+
+        tpsl_order = {
             "symbol": symbol,
-            "time_in_force": "GTC",
-            "trailValue": -trail_value if side == "SELL" else trail_value,
-            "type": "MARKET",
-            "txType": "STOP",
+            "side": side,
+            #"takeProfitPrice": take_profit_price,
+            #"takeProfitTrigger": "markPrice",
+            "stopLossPrice": float(custom_sl),
+            "stopLossTrigger": "lastPrice",
             "positionMode": "ISOLATED",
             "positionId": position_id
         }
-        trail_body_str = json.dumps(trail_order, separators=(',', ':'))
-        trail_sig = exchange.generate_signature(API_SECRET, url_path, nonce, trail_body_str)
-        trail_headers = {
+
+        tpsl_body_str = json.dumps(tpsl_order, separators=(',', ':'))
+        tpsl_sig = exchange.generate_signature(API_SECRET, url_path, nonce, tpsl_body_str)
+        tpsl_headers = {
             'request-api': API_KEY,
             'request-nonce': nonce,
-            'request-sign': trail_sig,
+            'request-sign': tpsl_sig,
             'Content-Type': 'application/json'
         }
 
-        debug(f"TRAILING STOP order payload: {trail_body_str}")
-        trail_response = exchange.throttled_request('POST', full_url, headers=trail_headers, data=trail_body_str)
-        debug(f"TRAILING STOP response status: {trail_response.status_code}")
-        debug(f"TRAILING STOP response body: {trail_response.text}")
-        trail_response.raise_for_status()
-        trail_data = trail_response.json()
-        closing_order_id = trail_data[0].get("orderID") if trail_data else None
+        debug(f"Bind TP/SL payload: {tpsl_body_str}")
+        tpsl_response = exchange.throttled_request('POST', full_url, headers=tpsl_headers, data=tpsl_body_str)
+        debug(f"Bind TP/SL response status: {tpsl_response.status_code}")
+        debug(f"Bind TP/SL response body: {tpsl_response.text}")
+        tpsl_response.raise_for_status()
+        tpsl_data = tpsl_response.json()
+        closing_order_id = tpsl_data[0].get("orderID") if tpsl_data else None
 
         if not closing_order_id:
-            print_with_date("[ERROR] Missing trailing stop order ID.")
+            print_with_date("[ERROR] Missing TP/SL bind order ID.")
             return None, None, None, None, None, None
 
-        print_with_date(f"[NEW] [TRAILING] {symbol} | {position_side} | Callback: {callback_rate}%")
+        print_with_date(f"[NEW] [BIND TP/SL] {symbol} | {position_side} | TP: {take_profit_price} | SL: {stop_loss_price}")
         return position_id, opening_order_id, closing_order_id, opening_price, trail_value, score
     except Exception as e:
         print_with_date(f"[ERROR] Failed to place TRAILING STOP order: {e}")
