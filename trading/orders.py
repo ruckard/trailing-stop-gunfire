@@ -13,6 +13,11 @@ from trading.trend import place_trend_positions
 from trading.range import place_range_positions
 from trading.common import get_dynamic_trade_max_candles
 
+from trading.analysis import (
+    is_win_from_trade,
+    is_breakeven_from_trade,
+)
+
 def build_trailing_stops_map():
     result = {}
     for symbol, cfg in state.SYMBOL_CONFIGS.items():

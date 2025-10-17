@@ -63,11 +63,6 @@ from trading.symbols import (
     filter_symbols_by_rank,
 )
 
-from trading.analysis import (
-    is_win_from_trade,
-    is_breakeven_from_trade,
-)
-
 from utils import print_with_date, debug, safe_override_import_or_default
 
 from client.cache import api_cache_fetch
