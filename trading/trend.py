@@ -206,6 +206,8 @@ def calculate_easy_trend9_with_rsi(symbol, lookback=50, rsi_period=14,
     minimum_trailing_length = 0.0025 * current_price  # 0.25% safety floor
     trailing_length = max(0.8 * atr, minimum_trailing_length)
 
+    advice_data = {}
+
     advice_data["minimum_trailing_length"] = minimum_trailing_length
     advice_data["trailing_length"] = trailing_length
 
