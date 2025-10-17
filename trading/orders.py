@@ -106,6 +106,8 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
             market_order["stopLossPrice"] = float(custom_sl)
             market_order["stopLossTrigger"] = "lastPrice"
 
+            stop_loss_price = float(custom_sl)
+
         score = state.TREND_SCORES_TMP.get(symbol)
 
         market_body_str = json.dumps(market_order, separators=(',', ':'))
@@ -174,7 +176,8 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
             print_with_date("[ERROR] Missing TP/SL bind order ID.")
             return None, None, None, None, None, None
 
-        print_with_date(f"[NEW] [BIND TP/SL] {symbol} | {position_side} | TP: {take_profit_price} | SL: {stop_loss_price}")
+        #print_with_date(f"[NEW] [BIND TP/SL] {symbol} | {position_side} | TP: {take_profit_price} | SL: {stop_loss_price}")
+        print_with_date(f"[NEW] [BIND TP/SL] {symbol} | {position_side} | SL: {stop_loss_price}")
         return position_id, opening_order_id, closing_order_id, opening_price, trail_value, score
     except Exception as e:
         print_with_date(f"[ERROR] Failed to place TRAILING STOP order: {e}")
