@@ -18,6 +18,8 @@ from trading.analysis import (
     is_breakeven_from_trade,
 )
 
+import time
+
 def build_trailing_stops_map():
     result = {}
     for symbol, cfg in state.SYMBOL_CONFIGS.items():
@@ -137,6 +139,9 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
         opening_order_id = market_data[0].get('orderID')
         opening_price = market_data[0].get('price')
 
+        # Wait for the market order to be executed
+        # before binding the TP/SL order
+        time.sleep(1)
         #debug(f"Placing Bind TP/SL order for {side} | TP: {take_profit_price} | SL: {stop_loss_price}")
         debug(f"Placing Bind TP/SL order for {side} | SL: {stop_loss_price}")
 
