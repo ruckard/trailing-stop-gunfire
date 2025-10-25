@@ -418,3 +418,95 @@ def check_positions(symbol):
             else:
                 print_with_date(f"[LOSS] Not reopening {symbol} {pid}")
     return all_closed
+
+def update_trailing_stop_manual(symbol, position_id, callback_rate, contracts):
+    print_with_date(f"Updating trailing stop for {symbol}")
+
+    # === 1️⃣ Get Current Price ===
+    try:
+        current_price = exchange.get_current_price(symbol)
+    except Exception as e:
+        print_with_date(f"[ERROR] Failed to get current price: {e}")
+        current_price = None
+
+    # === 2️⃣ Extract bind_order_id from the position ===
+    position_data = db.get_position(position_id)
+    if not position_data:
+        print_with_date(f"[ERROR] No position data found for position_id {position_id}")
+        return
+
+    bind_order_id = position_data.get("bind_order_id")
+    if not bind_order_id:
+        print_with_date(f"[ERROR] No bind_order_id found in position data for {symbol}")
+        return
+
+    # === 3️⃣ Query current bind order ===
+    print_with_date(f"Querying current bind order: {bind_order_id}")
+    try:
+        query_response = exchange.get_order(bind_order_id)
+        if not query_response:
+            print_with_date(f"[ERROR] Failed to query bind order {bind_order_id}")
+    except Exception as e:
+        print_with_date(f"[ERROR] Exception while querying bind order {bind_order_id}: {e}")
+
+    # === 4️⃣ Cancel current bind order ===
+    print_with_date(f"Cancelling current bind order {bind_order_id}")
+    try:
+        cancel_body = {"orderID": bind_order_id}
+        cancel_body_str = json.dumps(cancel_body, indent=2)
+        cancel_response = exchange.cancel_order(bind_order_id)
+
+        if cancel_response is not None:
+            print_with_date(f"Cancel order response status: {cancel_response.status_code}")
+            print_with_date(f"Cancel order response body: {cancel_response.text}")
+
+    except Exception as e:
+        print_with_date(f"[ERROR] Failed to cancel bind order {bind_order_id}: {e}")
+
+        # Debug info
+        if 'cancel_body_str' in locals():
+            print_with_date(f"[ERROR-Debug] CANCEL order payload: {cancel_body_str}")
+        if 'cancel_response' in locals() and cancel_response is not None:
+            if hasattr(cancel_response, 'status_code'):
+                print_with_date(f"[ERROR-Debug] CANCEL response status: {cancel_response.status_code}")
+            if hasattr(cancel_response, 'text'):
+                print_with_date(f"[ERROR-Debug] CANCEL response body: {cancel_response.text}")
+
+        return  # stop here if cancel failed
+
+    # === 5️⃣ Create new bind order ===
+    print_with_date("Creating new bind order")
+    try:
+        new_bind_body = {
+            "symbol": symbol,
+            "side": "Sell" if position_data.get("side") == "Long" else "Buy",
+            "orderType": "TrailingStopMarket",
+            "size": contracts,
+            "callbackRate": callback_rate,
+        }
+        new_bind_body_str = json.dumps(new_bind_body, indent=2)
+        new_bind_response = exchange.place_order(new_bind_body)
+
+        if new_bind_response is not None:
+            print_with_date(f"New bind order response status: {new_bind_response.status_code}")
+            print_with_date(f"New bind order response body: {new_bind_response.text}")
+
+        # === Update position with new closing order id ===
+        if new_bind_response and hasattr(new_bind_response, "json"):
+            new_bind_data = new_bind_response.json()
+            new_closing_order_id = new_bind_data.get("orderID")
+            if new_closing_order_id:
+                db.update_position(position_id, {"closing_order_id": new_closing_order_id})
+                print_with_date(f"Updated position {position_id} with new closing_order_id: {new_closing_order_id}")
+
+    except Exception as e:
+        print_with_date(f"[ERROR] Failed to create new bind order: {e}")
+
+        # Debug info
+        if 'new_bind_body_str' in locals():
+            print_with_date(f"[ERROR-Debug] CREATE order payload: {new_bind_body_str}")
+        if 'new_bind_response' in locals() and new_bind_response is not None:
+            if hasattr(new_bind_response, 'status_code'):
+                print_with_date(f"[ERROR-Debug] CREATE response status: {new_bind_response.status_code}")
+            if hasattr(new_bind_response, 'text'):
+                print_with_date(f"[ERROR-Debug] CREATE response body: {new_bind_response.text}")
