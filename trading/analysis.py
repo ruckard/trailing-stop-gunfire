@@ -1,5 +1,6 @@
 from utils import print_with_date, debug
 from exchange import btse as exchange
+from decimal import Decimal
 
 # === Win Check ===
 def is_win_from_trade(realized_pnl):
