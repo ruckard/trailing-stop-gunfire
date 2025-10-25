@@ -552,12 +552,30 @@ def update_trailing_stop_manual(symbol):
             'request-sign': cancel_sig,
         }
 
+        cancel_response = None
         try:
-            cancel_response = exchange.throttled_request('DELETE', cancel_full_url, headers=cancel_headers, params=cancel_params)
+            cancel_response = exchange.throttled_request(
+                'DELETE',
+                cancel_full_url,
+                headers=cancel_headers,
+                params=cancel_params
+            )
             cancel_response.raise_for_status()
         except Exception as e:
             print_with_date(f"[ERROR] Failed to cancel bind order {bind_order_id} for {symbol}: {e}")
-            continue
+
+            # === Extra debug info for cancel ===
+            if 'cancel_params' in locals():
+                print_with_date(f"[ERROR-Debug] CANCEL order payload: {cancel_params}")
+            if 'cancel_headers' in locals():
+                print_with_date(f"[ERROR-Debug] CANCEL headers: {cancel_headers}")
+            if cancel_response is not None:
+                if hasattr(cancel_response, 'status_code'):
+                    print_with_date(f"[ERROR-Debug] CANCEL response status: {cancel_response.status_code}")
+                if hasattr(cancel_response, 'text'):
+                    print_with_date(f"[ERROR-Debug] CANCEL response body: {cancel_response.text}")
+
+            continue  # skip to next position if cancel failed
 
         # === 5. Create new bind order ===
         side = "BUY" if position_side == "SHORT" else "SELL"
