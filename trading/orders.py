@@ -475,10 +475,8 @@ def update_trailing_stop_manual(symbol):
 
             # Extract stop loss info
             stop_loss_price = None
-            if "stopLossOrder" in order_data and order_data["stopLossOrder"]:
-                stop_loss_price = order_data["stopLossOrder"].get("triggerPrice") or order_data["stopLossOrder"].get("triggerStopPrice")
-            elif "triggerStopPrice" in order_data:
-                stop_loss_price = order_data.get("triggerStopPrice")
+            if "triggerPrice" in order_data:
+                stop_loss_price = order_data.get("triggerPrice")
 
             if not stop_loss_price:
                 debug(f"[TRAIL] Could not extract stop loss for {symbol} {pid}. Skipping.")
