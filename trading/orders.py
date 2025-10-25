@@ -482,6 +482,7 @@ def update_trailing_stop_manual(symbol):
 
             if not stop_loss_price:
                 print_with_date(f"[TRAIL] Could not extract stop loss for {symbol} {pid}. Skipping.")
+                print_with_date(f"[ORDER_DATA]: '{order_data}'")
                 continue
 
             initial_sl = Decimal(str(stop_loss_price))
