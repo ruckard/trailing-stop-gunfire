@@ -452,7 +452,7 @@ def update_trailing_stop_manual(symbol):
         position_side = info.get("side")
 
         if not (position_id and bind_order_id and position_side):
-            print_with_date(f"[TRAIL] Missing critical data for {symbol} {pid}. Skipping.")
+            debug(f"[TRAIL] Missing critical data for {symbol} {pid}. Skipping.")
             continue
 
         # === 2. Query current bind order ===
@@ -481,7 +481,7 @@ def update_trailing_stop_manual(symbol):
                 stop_loss_price = order_data.get("triggerStopPrice")
 
             if not stop_loss_price:
-                print_with_date(f"[TRAIL] Could not extract stop loss for {symbol} {pid}. Skipping.")
+                debug(f"[TRAIL] Could not extract stop loss for {symbol} {pid}. Skipping.")
                 continue
 
             initial_sl = Decimal(str(stop_loss_price))
@@ -506,7 +506,7 @@ def update_trailing_stop_manual(symbol):
         min_price_increment = state.MIN_PRICE_INCREMENTS.get(symbol)
 
         if None in [trailing_trigger, trailing_length, minimum_trail, min_price_increment]:
-            print_with_date(f"[TRAIL] Missing trailing params for {symbol}. Skipping {pid}.")
+            debug(f"[TRAIL] Missing trailing params for {symbol}. Skipping {pid}.")
             continue
 
         precision = abs(Decimal(str(min_price_increment)).as_tuple().exponent)
@@ -521,7 +521,7 @@ def update_trailing_stop_manual(symbol):
             update_needed = True
 
         if not update_needed:
-            print_with_date(f"[TRAIL] {symbol} {pid}: No update needed. Price={current_price_dec}, Trigger={trail_trigger}")
+            debug(f"[TRAIL] {symbol} {pid}: No update needed. Price={current_price_dec}, Trigger={trail_trigger}")
             continue
 
         if position_side == "LONG":
@@ -532,13 +532,13 @@ def update_trailing_stop_manual(symbol):
             ROUND_SIDE = ROUND_HALF_DOWN
 
         if abs(new_sl - initial_sl) < min_trail_len:
-            print_with_date(f"[TRAIL] {symbol} {pid}: Move {abs(new_sl - initial_sl)} < min trail {min_trail_len}. Skipping.")
+            debug(f"[TRAIL] {symbol} {pid}: Move {abs(new_sl - initial_sl)} < min trail {min_trail_len}. Skipping.")
             continue
 
         new_sl = new_sl.quantize(Decimal(str(min_price_increment)), rounding=ROUND_SIDE)
         new_sl_float = float(new_sl)
 
-        print_with_date(f"[TRAIL] {symbol} {pid} | New SL {new_sl_float} (was {initial_sl})")
+        debug(f"[TRAIL] {symbol} {pid} | New SL {new_sl_float} (was {initial_sl})")
 
         # === 4. Cancel old bind order ===
         cancel_url_path = '/api/v2.2/order'
