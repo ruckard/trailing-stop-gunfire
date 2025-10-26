@@ -65,7 +65,7 @@ def classify_trend_or_range_real(symbol, lookback=50, threshold=0.0003):
 def is_low_volatility_symbol(
     symbol,
     lookback=50,
-    volatility_low_cut=0.7,
+    volatility_low_cut=1.11,
     trim_fraction=0.1,
     method="trimmed_ewma",          # default: trimmed_ewma
     ewma_span=None,                 # dynamic: set below
