@@ -285,8 +285,12 @@ def calculate_easy_trend9_with_rsi(symbol, lookback=50, rsi_period=14,
     long_trailing_trigger_price = current_price + (current_price - fib_retrace_long)  # ≈ +1R profit
     short_trailing_trigger_price = current_price - (fib_retrace_short - current_price)  # ≈ +1R profit
 
+    MINIMUM_STOP_LOSS_PERCENT=0.30
     # --- Relaxed breakout / retrace conditions
     if slope_normalized > 0:
+        if abs((fib_retrace_long - current_price) / current_price) < (MINIMUM_STOP_LOSS_PERCENT * 0.01):
+            debug(f"[{symbol}] Dismissed LONG: fib_retrace_long too close to current price (<0.3%)")
+            return 0.0
         if np.max(late_values) > early_high * 1.005:  # allow 0.5% breakout
             debug(f"[{symbol}] Discarded LONG: breakout above early high")
             return 0.0
@@ -299,6 +303,9 @@ def calculate_easy_trend9_with_rsi(symbol, lookback=50, rsi_period=14,
         return {"score": float(slope_normalized), "advice": advice_data}
 
     elif slope_normalized < 0:
+        if abs((fib_retrace_short - current_price) / current_price) < (MINIMUM_STOP_LOSS_PERCENT * 0.01):
+            debug(f"[{symbol}] Dismissed SHORT: fib_retrace_short too close to current price (<0.3%)")
+            return 0.0
         if np.min(late_values) < early_low * 0.995:  # allow 0.5% breakout
             debug(f"[{symbol}] Discarded SHORT: breakout below early low")
             return 0.0
