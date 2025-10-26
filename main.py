@@ -238,7 +238,8 @@ def start_new_cycle(resume=False):
 
         low_volatility_symbols = []
         for symbol in base_symbols:
-            if is_low_volatility_symbol(symbol):
+            is_low_volatility, volatility_metric = is_low_volatility_symbol(symbol)
+            if is_low_volatility:
                 low_volatility_symbols.append(symbol)
 
         symbols, long_symbols, short_symbols = filter_symbols_by_rank(
