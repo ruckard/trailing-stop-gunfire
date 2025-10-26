@@ -38,6 +38,7 @@ from trading.trend import (
     calculate_ema_trend_score,
     calculate_atr,
     calculate_trailing_start_from_atr,
+    is_low_volatility_symbol,
 )
 
 from trading.range import (
@@ -234,8 +235,15 @@ def start_new_cycle(resume=False):
         state.positions = {}
         for symbol in base_symbols:
             positionsdb.clear_positions(symbol)
+
+        low_volatility_symbols = []
+        for symbol in base_symbols:
+            is_low_volatility, volatility_metric = is_low_volatility_symbol(symbol)
+            if is_low_volatility:
+                low_volatility_symbols.append(symbol)
+
         symbols, long_symbols, short_symbols = filter_symbols_by_rank(
-            base_symbols,
+            low_volatility_symbols,
             long_top_number=MAXIMUM_LONG_TRADES_NUMBER,
             short_top_number=MAXIMUM_SHORT_TRADES_NUMBER,
             rank_type='EASY9',
