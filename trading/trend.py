@@ -62,6 +62,76 @@ def classify_trend_or_range_real(symbol, lookback=50, threshold=0.0003):
         print_with_date(f"[ERROR] Classify failed for {symbol}: {e}")
         return "unknown"
 
+def is_low_volatility_symbol(
+    symbol,
+    lookback=50,
+    volatility_low_cut=0.7,
+    trim_fraction=0.1,
+    method="trimmed_ewma",          # default: trimmed_ewma
+    ewma_span=None,                 # dynamic: set below
+    ewma_weighted_mix=0.6           # recommended balance between robustness and recent bias
+):
+    """
+    Determine whether a symbol is low volatility based on body/shadow ratio using
+    a trimmed exponential weighted mean (trimmed_ewma) approach by default.
+
+    Returns (is_low: bool, metric_value: float)
+    """
+    try:
+        df = exchange.fetch_5m_ohlcv(symbol)
+        if df is None or df.empty or len(df) < lookback:
+            print_with_date(f"[WARN] Not enough data for {symbol}")
+            return False, 0.0
+
+        df = df.tail(lookback).copy()
+
+        if "open" not in df.columns or "high" not in df.columns or "low" not in df.columns or "close" not in df.columns:
+            df = pd.DataFrame(df, columns=["timestamp", "open", "high", "low", "close", "volume"])
+
+        df["body_size"] = (df["close"] - df["open"]).abs()
+        df["shadow_size"] = (df["high"] - df["low"]) - df["body_size"]
+        df = df[df["shadow_size"] > 0]
+        if df.empty:
+            print_with_date(f"[WARN] No valid candles for {symbol} after filtering shadows")
+            return False, 0.0
+
+        ratios = (df["body_size"] / df["shadow_size"]).dropna()
+        if ratios.empty:
+            print_with_date(f"[WARN] No valid ratio values for {symbol}")
+            return False, 0.0
+
+        # Medium robustness trimming
+        def trimmed_array(arr, trim_frac):
+            arr_sorted = np.sort(arr)
+            n = len(arr_sorted)
+            k = int(np.floor(n * trim_frac))
+            if n - 2 * k <= 0:
+                return arr_sorted
+            return arr_sorted[k : n - k]
+
+        # Set dynamic EWMA span based on lookback (medium recent bias)
+        if ewma_span is None:
+            ewma_span = max(3, int(lookback / 10))
+
+        # Compute trimmed mean and ewma components
+        trimmed = trimmed_array(ratios.to_numpy(), trim_fraction)
+        trimmed_mean_val = float(np.mean(trimmed)) if trimmed.size > 0 else float(ratios.median())
+        ewma_val = float(ratios.ewm(span=ewma_span, adjust=False).mean().iloc[-1])
+
+        # Combine both for balanced responsiveness
+        metric_value = ewma_weighted_mix * trimmed_mean_val + (1 - ewma_weighted_mix) * ewma_val
+
+        print_with_date(
+            f"[INFO] {symbol} volatility metric (trimmed_ewma): {metric_value:.4f} "
+            f"(threshold={volatility_low_cut}, lookback={lookback})"
+        )
+
+        return metric_value >= volatility_low_cut, float(metric_value)
+
+    except Exception as e:
+        print_with_date(f"[ERROR] Failed to calculate volatility for {symbol}: {e}")
+        return False, 0.0
+
 def classify_trend_or_range(symbol, lookback=50, threshold=0.0003):
     """
     Cached wrapper for trend/range classification.
