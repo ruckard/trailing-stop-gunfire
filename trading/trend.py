@@ -288,6 +288,9 @@ def calculate_easy_trend9_with_rsi(symbol, lookback=50, rsi_period=14,
     MINIMUM_STOP_LOSS_PERCENT=0.30
     # --- Relaxed breakout / retrace conditions
     if slope_normalized > 0:
+        if (current_price < fib_retrace_long):
+            debug(f"[{symbol}] Dismissed LONG: fib_retrace_long would trigger stop loss immediately.")
+            return 0.0
         if abs((fib_retrace_long - current_price) / current_price) < (MINIMUM_STOP_LOSS_PERCENT * 0.01):
             debug(f"[{symbol}] Dismissed LONG: fib_retrace_long too close to current price (<0.3%)")
             return 0.0
@@ -303,6 +306,9 @@ def calculate_easy_trend9_with_rsi(symbol, lookback=50, rsi_period=14,
         return {"score": float(slope_normalized), "advice": advice_data}
 
     elif slope_normalized < 0:
+        if (current_price > fib_retrace_short):
+            debug(f"[{symbol}] Dismissed SHORT: fib_retrace_short would trigger stop loss immediately.")
+            return 0.0
         if abs((fib_retrace_short - current_price) / current_price) < (MINIMUM_STOP_LOSS_PERCENT * 0.01):
             debug(f"[{symbol}] Dismissed SHORT: fib_retrace_short too close to current price (<0.3%)")
             return 0.0
