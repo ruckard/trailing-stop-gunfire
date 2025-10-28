@@ -142,8 +142,7 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
         # Wait for the market order to be executed
         # before binding the TP/SL order
         time.sleep(1)
-        #debug(f"Placing Bind TP/SL order for {side} | TP: {take_profit_price} | SL: {stop_loss_price}")
-        debug(f"Placing Bind TP/SL order for {side} | SL: {stop_loss_price}")
+        debug(f"Placing Bind TP/SL order for {side} | TP: {take_profit_price if 'take_profit_price' in locals() else 'N/A'} | SL: {stop_loss_price if 'stop_loss_price' in locals() else 'N/A'}")
 
         nonce = str(int(time.time() * 1000))
         url_path = '/api/v2.2/order/bind/tpsl'
@@ -181,8 +180,7 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
             print_with_date("[ERROR] Missing TP/SL bind order ID.")
             return None, None, None, None, None, None
 
-        #print_with_date(f"[NEW] [BIND TP/SL] {symbol} | {position_side} | TP: {take_profit_price} | SL: {stop_loss_price}")
-        print_with_date(f"[NEW] [BIND TP/SL] {symbol} | {position_side} | SL: {stop_loss_price}")
+        print_with_date(f"[NEW] [BIND TP/SL] {symbol} | {position_side} | TP: {take_profit_price if 'take_profit_price' in locals() else 'N/A'} | SL: {stop_loss_price if 'stop_loss_price' in locals() else 'N/A'}")
         return position_id, opening_order_id, closing_order_id, opening_price, trail_value, score
     except Exception as e:
         print_with_date(f"[ERROR] Failed to place BIND TP/SL order: {e}")
