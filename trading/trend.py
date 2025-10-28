@@ -45,7 +45,7 @@ def classify_trend_or_range_real(symbol, lookback=50, threshold=0.0003):
     Returns: 'trend', 'range', or 'unknown'
     """
     try:
-        score = calculate_easy_trend9_with_rsi(symbol, lookback=lookback)
+        score = calculate_easy_trend10_with_rsi(symbol, lookback=lookback)
 
         if isinstance(score, dict):
             score_value = score.get("score", 0.0)
@@ -148,6 +148,182 @@ def classify_trend_or_range(symbol, lookback=50, threshold=0.0003):
     result = classify_trend_or_range_real(symbol, lookback=lookback, threshold=threshold)
     TRENDRANGE_CACHE[symbol] = (now, result)
     return result
+
+def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
+                                   rsi_low_cutoff=30, rsi_high_cutoff=70,
+                                   window_size=5):
+    """
+    'Easy Trend 10' variant (improved from Trend 9):
+    - Uses overlapping sliding windows with log-return slopes.
+    - Adaptive lookback (ATR-based).
+    - Exponential weighting on recent slope segments.
+    - Soft RSI boost instead of hard cutoff.
+    - 60% majority rule.
+    - Uses first 80% candles for slope calculations (vs 75%).
+    - More tolerant fib retrace / breakout filters.
+    - Adds EMA confirmation and trend persistence boost.
+    - Returns {'score': float, 'stop_loss': float} or 0.0
+    """
+
+    df = exchange.fetch_5m_ohlcv(symbol)
+    if (not isinstance(df, pd.DataFrame)):
+        return 0.0
+    if df is None or df.empty or len(df) < lookback:
+        return 0.0
+
+    # --- Adaptive lookback based on volatility (ATR ratio)
+    try:
+        atr = ta.ATR(df['high'], df['low'], df['close'], timeperiod=14).iloc[-1]
+        avg_price = df['close'].iloc[-1]
+        current_price = avg_price
+        vol_ratio = atr / avg_price if avg_price != 0 else 0
+        lookback = int(max(50, min(150, 100 * vol_ratio)))  # 50–150 range
+    except Exception as e:
+        debug(f"[WARN] ATR or lookback calculation failed for {symbol}: {e}")
+        atr = 0.0
+        current_price = df['close'].iloc[-1] if not df.empty else 0.0
+        pass
+
+    # --- Use ohlc4 values
+    ohlc4 = ((df['open'] + df['high'] + df['low'] + df['close']) / 4.0).astype(float)
+    values = ohlc4.tail(lookback).values
+
+    # --- Split 80% early / 20% late
+    split_idx = int(len(values) * 0.8)
+    early_values = values[:split_idx]
+    late_values = values[split_idx:]
+
+    if len(early_values) <= 9:
+        log_returns = np.diff(np.log(early_values))
+        slope_normalized = np.mean(log_returns)
+        return float(slope_normalized)
+
+    # --- Calculate slopes on early values
+    segment_slopes = []
+    for i in range(len(early_values) - window_size + 1):
+        segment = early_values[i:i + window_size]
+        log_returns = np.diff(np.log(segment))
+        mean_log_ret = np.mean(log_returns)
+        vol_adj_slope = mean_log_ret / (np.std(segment) + 1e-8)
+        segment_slopes.append(vol_adj_slope)
+        debug(
+            f"[DEBUG EASY TREND10] {symbol} | Window {i+1}/{len(early_values)-window_size+1} | "
+            f"MeanLogRet={mean_log_ret:.6f}, VolAdjSlope={vol_adj_slope:.6f}"
+        )
+
+    # --- Weighted average of slopes (recent > past)
+    weights = np.linspace(0.2, 1.0, len(segment_slopes))
+    slope_normalized = np.average(segment_slopes, weights=weights)
+
+    positive_count = sum(1 for s in segment_slopes if s > 0)
+    negative_count = sum(1 for s in segment_slopes if s < 0)
+    required_count = int(len(segment_slopes) * 0.6)  # 60% rule
+
+    first_candle = early_values[0]
+    last_candle = early_values[-1]
+
+    if not (
+        (positive_count >= required_count and last_candle > first_candle)
+        or (negative_count >= required_count and last_candle < first_candle)
+    ):
+        return 0.0
+
+    debug(
+        f"[DEBUG EASY TREND10] {symbol} | AvgSlope={slope_normalized:.6f}, "
+        f"First={first_candle:.4f}, Last={last_candle:.4f}, "
+        f"PosCount={positive_count}, NegCount={negative_count}"
+    )
+
+    # --- RSI soft boost (not filter)
+    try:
+        rsi = ta.RSI(df['close'], timeperiod=rsi_period).iloc[-1]
+        rsi_boost = 1.0
+        if 55 < rsi < 70:
+            rsi_boost = 1.2  # bullish support
+        elif 30 < rsi < 45:
+            rsi_boost = 1.2  # bearish support
+        slope_normalized *= rsi_boost
+    except Exception:
+        pass
+
+    # --- EMA confirmation filter
+    try:
+        ema_fast = ta.EMA(df['close'], timeperiod=21).iloc[-1]
+        ema_slow = ta.EMA(df['close'], timeperiod=55).iloc[-1]
+        if ema_fast > ema_slow and slope_normalized > 0:
+            slope_normalized *= 1.2
+        elif ema_fast < ema_slow and slope_normalized < 0:
+            slope_normalized *= 1.2
+        else:
+            slope_normalized *= 0.5
+    except Exception:
+        pass
+
+    # --- Trend persistence check (last 10 bars)
+    recent_returns = np.diff(np.log(values[-10:]))
+    if slope_normalized > 0 and np.mean(recent_returns) > 0:
+        slope_normalized *= 1.3
+    elif slope_normalized < 0 and np.mean(recent_returns) < 0:
+        slope_normalized *= 1.3
+
+    # --- Determine fib retrace levels
+    early_high = np.max(early_values)
+    early_low = np.min(early_values)
+    fib_retrace_long = early_high - (1 - state.FIB_LEVEL) * (early_high - early_low)
+    fib_retrace_short = early_low + (1 - state.FIB_LEVEL) * (early_high - early_low)
+
+    # === Common trailing parameters ===
+    minimum_trailing_length = 0.0025 * current_price  # 0.25% safety floor
+    trailing_length = max(1.2 * atr, minimum_trailing_length)
+
+    advice_data = {}
+
+    advice_data["minimum_trailing_length"] = minimum_trailing_length
+    advice_data["trailing_length"] = trailing_length
+
+    # === LONG/SHORT side trailing parameters ===
+    long_trailing_trigger_price = current_price + (current_price - fib_retrace_long)  # ≈ +1R profit
+    short_trailing_trigger_price = current_price - (fib_retrace_short - current_price)  # ≈ +1R profit
+
+    MINIMUM_STOP_LOSS_PERCENT=0.30
+    # --- Relaxed breakout / retrace conditions
+    if slope_normalized > 0:
+        if (current_price < fib_retrace_long):
+            debug(f"[{symbol}] Dismissed LONG: fib_retrace_long would trigger stop loss immediately.")
+            return 0.0
+        if abs((fib_retrace_long - current_price) / current_price) < (MINIMUM_STOP_LOSS_PERCENT * 0.01):
+            debug(f"[{symbol}] Dismissed LONG: fib_retrace_long too close to current price (<0.3%)")
+            return 0.0
+        if np.max(late_values) > early_high * 1.005:  # allow 0.5% breakout
+            debug(f"[{symbol}] Discarded LONG: breakout above early high")
+            return 0.0
+        if np.min(late_values) < fib_retrace_long * 0.995:  # allow wiggle room
+            debug(f"[{symbol}] Discarded LONG: retraced below Fib tolerance")
+            return 0.0
+
+        advice_data["trailing_trigger_price"] = long_trailing_trigger_price
+        advice_data["stop_loss"] = fib_retrace_long
+        return {"score": float(slope_normalized), "advice": advice_data}
+
+    elif slope_normalized < 0:
+        if (current_price > fib_retrace_short):
+            debug(f"[{symbol}] Dismissed SHORT: fib_retrace_short would trigger stop loss immediately.")
+            return 0.0
+        if abs((fib_retrace_short - current_price) / current_price) < (MINIMUM_STOP_LOSS_PERCENT * 0.01):
+            debug(f"[{symbol}] Dismissed SHORT: fib_retrace_short too close to current price (<0.3%)")
+            return 0.0
+        if np.min(late_values) < early_low * 0.995:  # allow 0.5% breakout
+            debug(f"[{symbol}] Discarded SHORT: breakout below early low")
+            return 0.0
+        if np.max(late_values) > fib_retrace_short * 1.005:
+            debug(f"[{symbol}] Discarded SHORT: retraced above Fib tolerance")
+            return 0.0
+
+        advice_data["trailing_trigger_price"] = short_trailing_trigger_price
+        advice_data["stop_loss"] = fib_retrace_short
+        return {"score": float(slope_normalized), "advice": advice_data}
+
+    return float(slope_normalized)
 
 def calculate_easy_trend9_with_rsi(symbol, lookback=50, rsi_period=14,
                                    rsi_low_cutoff=30, rsi_high_cutoff=70,
