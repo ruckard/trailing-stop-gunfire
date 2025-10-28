@@ -288,6 +288,11 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
     MINIMUM_STOP_LOSS_PERCENT=0.30
     # --- Relaxed breakout / retrace conditions
     if slope_normalized > 0:
+        fib_073 = early_low + (early_high - early_low) * 0.73
+        fib_0768 = early_low + (early_high - early_low) * 0.768
+        if not (fib_073 <= current_price <= fib_0768):
+            debug(f"[{symbol}] Dismissed LONG: current price not within 0.73–0.768 fibo range")
+            return 0.0
         if (current_price < fib_retrace_long):
             debug(f"[{symbol}] Dismissed LONG: fib_retrace_long would trigger stop loss immediately.")
             return 0.0
@@ -303,9 +308,15 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
 
         advice_data["trailing_trigger_price"] = long_trailing_trigger_price
         advice_data["stop_loss"] = fib_retrace_long
+        advice_data["take_profit"] = early_low + (early_high - early_low) * 0.893
         return {"score": float(slope_normalized), "advice": advice_data}
 
     elif slope_normalized < 0:
+        fib_073 = early_high - (early_high - early_low) * 0.73
+        fib_0768 = early_high - (early_high - early_low) * 0.768
+        if not (fib_0768 <= current_price <= fib_073):
+            debug(f"[{symbol}] Dismissed SHORT: current price not within 0.73–0.768 inverse fibo range")
+            return 0.0
         if (current_price > fib_retrace_short):
             debug(f"[{symbol}] Dismissed SHORT: fib_retrace_short would trigger stop loss immediately.")
             return 0.0
@@ -321,6 +332,7 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
 
         advice_data["trailing_trigger_price"] = short_trailing_trigger_price
         advice_data["stop_loss"] = fib_retrace_short
+        advice_data["take_profit"] = early_high - (early_high - early_low) * 0.893
         return {"score": float(slope_normalized), "advice": advice_data}
 
     return float(slope_normalized)
