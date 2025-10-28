@@ -4,6 +4,7 @@ from utils import print_with_date, debug
 from exchange import btse as exchange
 from config import API_KEY, API_SECRET, BASE_URL
 import time, json
+import requests
 
 def show_positions(symbol):
     print_with_date("[POSITIONS LOADED FROM DB]")
