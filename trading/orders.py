@@ -110,6 +110,19 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
 
             stop_loss_price = float(custom_sl)
 
+        custom_tp = state.TREND_TAKE_PROFITS.get(symbol)
+        if custom_tp is not None:
+            # Do not make the take profit bigger when rounding
+            if (position_side == "SHORT"):
+                ROUND_SIDE=ROUND_HALF_DOWN
+            else:
+                ROUND_SIDE=ROUND_HALF_UP
+            custom_tp = Decimal(str(custom_tp)).quantize(Decimal(str(min_price_increment)), rounding=ROUND_SIDE)
+            market_order["takeProfitPrice"] = float(custom_tp)
+            market_order["takeProfitTrigger"] = "lastPrice"
+
+            take_profit_price = float(custom_tp)
+
         score = state.TREND_SCORES_TMP.get(symbol)
 
         market_body_str = json.dumps(market_order, separators=(',', ':'))
