@@ -160,12 +160,15 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
 
             advice = trend_result.get("advice", {})
             stop_loss = advice.get("stop_loss")
+            take_profit = advice.get("take_profit")
             trailing_trigger_price = advice.get("trailing_trigger_price")
             trailing_length = advice.get("trailing_length")
             minimum_trailing_length = advice.get("minimum_trailing_length")
 
             if stop_loss is not None:
                 state.TREND_STOP_LOSSES[symbol] = stop_loss
+            if take_profit is not None:
+                state.TREND_TAKE_PROFITS[symbol] = take_profit
             if trailing_trigger_price is not None:
                 state.TRAILING_TRIGGER_PRICES[symbol] = trailing_trigger_price
             if trailing_length is not None:
@@ -191,6 +194,7 @@ def filter_symbols_by_rank(symbols, long_top_number=3, short_top_number=3, rank_
             # Remove from all related collections to ensure consistency
             trend_scores.pop(symbol, None)
             atr_percents.pop(symbol, None)
+            state.TREND_TAKE_PROFITS.pop(symbol, None)
             state.TREND_STOP_LOSSES.pop(symbol, None)
             state.TRAILING_TRIGGER_PRICES.pop(symbol, None)
             state.TRAILING_LENGTHS.pop(symbol, None)
