@@ -172,6 +172,10 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
             "positionId": position_id
         }
 
+        if custom_tp is not None:
+            tpsl_order["takeProfitPrice"] = float(custom_tp)
+            tpsl_order["takeProfitTrigger"] = "lastPrice"
+
         tpsl_body_str = json.dumps(tpsl_order, separators=(',', ':'))
         tpsl_sig = exchange.generate_signature(API_SECRET, url_path, nonce, tpsl_body_str)
         tpsl_headers = {
@@ -600,6 +604,12 @@ def update_trailing_stop_manual(symbol):
             "positionMode": "ISOLATED",
             "positionId": position_id
         }
+
+        custom_tp = state.TREND_TAKE_PROFITS.get(symbol)
+
+        if custom_tp is not None:
+            tpsl_order["takeProfitPrice"] = float(custom_tp)
+            tpsl_order["takeProfitTrigger"] = "lastPrice"
 
         tpsl_body_str = json.dumps(tpsl_order, separators=(',', ':'))
         tpsl_sig = exchange.generate_signature(API_SECRET, tpsl_url_path, tpsl_nonce, tpsl_body_str)
