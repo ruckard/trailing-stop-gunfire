@@ -130,7 +130,7 @@ def fetch_5m_ohlcv_real(symbol, limit=100):
     end_time = int(time.time() * 1000)  # current timestamp in ms
     params = {
         'symbol': symbol,
-        'resolution': '5',  # 5m candles
+        'resolution': '15',  # 15m candles
         'end': end_time,
     }
     response = throttled_request("GET", url, params=params)
