@@ -288,6 +288,27 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
     MINIMUM_STOP_LOSS_PERCENT=0.30
     # --- Relaxed breakout / retrace conditions
     if slope_normalized > 0:
+
+        # --- Previous candle confirmation (bullish)
+        try:
+            prev_open = df['open'].iloc[-2]
+            prev_close = df['close'].iloc[-2]
+            prev_high = df['high'].iloc[-2]
+            prev_low = df['low'].iloc[-2]
+
+            body = abs(prev_close - prev_open)
+            total_range = max(prev_high - prev_low, 1e-8)
+            body_ratio = body / total_range
+            close_position = (prev_close - prev_low) / total_range  # 0 = low, 1 = high
+
+            nice_bull = (prev_close > prev_open) and (body_ratio >= 0.6) and (close_position >= 0.75)
+            if not nice_bull:
+                debug(f"[{symbol}] Dismissed LONG: previous candle not strong bullish.")
+                return 0.0
+        except Exception as e:
+            debug(f"[WARN] Previous candle validation failed for {symbol}: {e}")
+            return 0.0
+
         fib_073 = early_low + (early_high - early_low) * 0.73
         fib_0768 = early_low + (early_high - early_low) * 0.768
         if not (fib_073 <= current_price <= fib_0768):
@@ -312,6 +333,27 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
         return {"score": float(slope_normalized), "advice": advice_data}
 
     elif slope_normalized < 0:
+
+        # --- Previous candle confirmation (bearish)
+        try:
+            prev_open = df['open'].iloc[-2]
+            prev_close = df['close'].iloc[-2]
+            prev_high = df['high'].iloc[-2]
+            prev_low = df['low'].iloc[-2]
+
+            body = abs(prev_close - prev_open)
+            total_range = max(prev_high - prev_low, 1e-8)
+            body_ratio = body / total_range
+            close_position = (prev_close - prev_low) / total_range  # 0 = low, 1 = high
+
+            nice_bear = (prev_close < prev_open) and (body_ratio >= 0.6) and (close_position <= 0.25)
+            if not nice_bear:
+                debug(f"[{symbol}] Dismissed SHORT: previous candle not strong bearish.")
+                return 0.0
+        except Exception as e:
+            debug(f"[WARN] Previous candle validation failed for {symbol}: {e}")
+            return 0.0
+
         fib_073 = early_high - (early_high - early_low) * 0.73
         fib_0768 = early_high - (early_high - early_low) * 0.768
         if not (fib_0768 <= current_price <= fib_073):
