@@ -15,7 +15,7 @@ from utils import print_with_date, lock_guard, debug
 from client.cache import api_cache_fetch
 
 OHLCV_CACHE = {}
-OHLCV_CACHE_TIMEOUT = timedelta(minutes=5)
+OHLCV_CACHE_TIMEOUT = timedelta(minutes=1)
 
 # ===============================
 # Others
