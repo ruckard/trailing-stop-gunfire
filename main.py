@@ -299,8 +299,8 @@ def run_main_loop():
     while symbols is None:
         symbols, long_symbols, short_symbols = start_new_cycle(resume=resume_cycle)
         if symbols is None:
-            print_with_date("[MAIN LOOP] No active symbols. Waiting 5 minutes before retry.")
-            time.sleep(300)
+            print_with_date("[MAIN LOOP] No active symbols. Waiting 2 minutes before retry.")
+            time.sleep(120)
             resume_cycle = False  # ensure it's not treated as resume on next try
 
     state.check_sleep_start = True
@@ -327,8 +327,8 @@ def run_main_loop():
 
             # If no symbols, just sleep and retry next iteration
             if symbols is None:
-                print_with_date("[MAIN LOOP] No symbols in new cycle. Waiting 5 minutes.")
-                time.sleep(300)
+                print_with_date("[MAIN LOOP] No symbols in new cycle. Waiting 2 minutes.")
+                time.sleep(120)
                 continue
 
         except requests.exceptions.RequestException as e:
