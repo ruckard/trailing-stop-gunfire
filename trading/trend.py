@@ -80,7 +80,7 @@ def is_low_volatility_symbol(
     try:
         df = exchange.fetch_5m_ohlcv(symbol)
         if df is None or df.empty or len(df) < lookback:
-            print_with_date(f"[WARN] Not enough data for {symbol}")
+            debug(f"[WARN] Not enough data for {symbol}")
             return False, 0.0
 
         df = df.tail(lookback).copy()
@@ -92,12 +92,12 @@ def is_low_volatility_symbol(
         df["shadow_size"] = (df["high"] - df["low"]) - df["body_size"]
         df = df[df["shadow_size"] > 0]
         if df.empty:
-            print_with_date(f"[WARN] No valid candles for {symbol} after filtering shadows")
+            debug(f"[WARN] No valid candles for {symbol} after filtering shadows")
             return False, 0.0
 
         ratios = (df["body_size"] / df["shadow_size"]).dropna()
         if ratios.empty:
-            print_with_date(f"[WARN] No valid ratio values for {symbol}")
+            debug(f"[WARN] No valid ratio values for {symbol}")
             return False, 0.0
 
         # Medium robustness trimming
@@ -121,7 +121,7 @@ def is_low_volatility_symbol(
         # Combine both for balanced responsiveness
         metric_value = ewma_weighted_mix * trimmed_mean_val + (1 - ewma_weighted_mix) * ewma_val
 
-        print_with_date(
+        debug(
             f"[INFO] {symbol} volatility metric (trimmed_ewma): {metric_value:.4f} "
             f"(threshold={volatility_low_cut}, lookback={lookback})"
         )
@@ -129,7 +129,7 @@ def is_low_volatility_symbol(
         return metric_value >= volatility_low_cut, float(metric_value)
 
     except Exception as e:
-        print_with_date(f"[ERROR] Failed to calculate volatility for {symbol}: {e}")
+        debug(f"[ERROR] Failed to calculate volatility for {symbol}: {e}")
         return False, 0.0
 
 def is_dead_chart(
