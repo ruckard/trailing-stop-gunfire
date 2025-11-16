@@ -135,62 +135,79 @@ def is_low_volatility_symbol(
 def is_dead_chart(
     df,
     lookback=60,
-    min_range_ratio=0.0015,
-    min_volatility_ratio=0.001,
-    min_active_candles=5,
-    min_unique_prices=10,
+    min_range_ratio=0.0020,
+    min_volatility_ratio=0.0015,
+    min_active_candles=6,
+    min_unique_prices=12,
+    max_micro_range_ratio=0.0004,
+    max_micro_range_fraction=0.70,
+    max_flat_run=10,
 ):
     """
-    Returns True if the chart is 'dead' (illiquid, flat, zero-volatility), similar to SPX example.
-
-    PARAMETERS
-    ----------
-    df : pandas DataFrame
-        Must contain open, high, low, close.
-    lookback : int
-        Number of most recent candles to evaluate.
-    min_range_ratio : float
-        Minimum (max - min) / mean(close) required over lookback window.
-    min_volatility_ratio : float
-        Minimum std(close) / mean(close) required.
-    min_active_candles : int
-        Minimum number of candles with a body > threshold.
-    min_unique_prices : int
-        Minimum number of unique close prices required.
+    Improved dead-chart detector that captures ultra-flat symbols like S-PERP.
     """
 
     if len(df) < lookback:
-        return True  # not enough data → considered bad
+        return True
 
     recent = df.tail(lookback)
-
-    closes = recent["close"]
-    opens = recent["open"]
+    opens = recent["open"].values
+    highs = recent["high"].values
+    lows = recent["low"].values
+    closes = recent["close"].values
 
     price_mean = closes.mean()
 
-    # --- 1. RANGE TEST (detects flat charts)
+    # -----------------------------------------------------------
+    # 1. BASIC RANGE TEST (same as before, slightly stricter)
+    # -----------------------------------------------------------
     price_range_ratio = (closes.max() - closes.min()) / price_mean
-
     if price_range_ratio < min_range_ratio:
         return True
 
-    # --- 2. VOLATILITY TEST
+    # -----------------------------------------------------------
+    # 2. BASIC VOLATILITY TEST (slightly stricter)
+    # -----------------------------------------------------------
     price_std_ratio = closes.std() / price_mean
-
     if price_std_ratio < min_volatility_ratio:
         return True
 
-    # --- 3. ACTIVE CANDLE COUNT (detects micro-candles)
+    # -----------------------------------------------------------
+    # 3. ACTIVE CANDLE COUNT (using median instead of mean)
+    # -----------------------------------------------------------
     bodies = (closes - opens).abs() / price_mean
-    active_candle_count = (bodies > 0.0003).sum()  # 0.03% body size threshold
-
+    active_candle_count = (bodies > 0.0003).sum()
     if active_candle_count < min_active_candles:
         return True
 
-    # --- 4. UNIQUE PRICE TEST
-    if closes.nunique() < min_unique_prices:
+    # -----------------------------------------------------------
+    # 4. UNIQUE PRICE TEST
+    # -----------------------------------------------------------
+    if len(set(closes)) < min_unique_prices:
         return True
+
+    # -----------------------------------------------------------
+    # 5. MICRO-RANGE CANDLE TEST (new)
+    # detect if candles barely move at all
+    # -----------------------------------------------------------
+    ranges = (highs - lows) / price_mean
+    micro_candles = (ranges < max_micro_range_ratio).sum()
+
+    if micro_candles / lookback > max_micro_range_fraction:
+        return True
+
+    # -----------------------------------------------------------
+    # 6. FLAT-RUN TEST (new)
+    # detect long sequences of open == close
+    # -----------------------------------------------------------
+    flat_run = 0
+    for i in range(1, lookback):
+        if opens[i] == closes[i] == closes[i-1]:
+            flat_run += 1
+            if flat_run >= max_flat_run:
+                return True
+        else:
+            flat_run = 0
 
     return False
 
