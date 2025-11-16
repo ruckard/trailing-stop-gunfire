@@ -2,7 +2,7 @@
 from exchange import btse   # import your real BTSE API functions
 
 def fetch_5m_ohlcv_real(symbol, limit=100):
-    """Wrapper for BTSE 4h OHLCV fetch."""
+    """Wrapper for BTSE 5m OHLCV fetch."""
     return btse.fetch_5m_ohlcv_real(symbol, limit=limit)
 
 def fetch_contract_sizes(symbols):
