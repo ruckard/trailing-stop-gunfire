@@ -144,39 +144,41 @@ def is_dead_chart(
     max_flat_run=10,
 ):
     """
-    Improved dead-chart detector that captures ultra-flat symbols like S-PERP.
+    Improved dead-chart detector for ultra-flat, illiquid or inactive symbols.
     """
 
     if len(df) < lookback:
         return True
 
     recent = df.tail(lookback)
-    opens = recent["open"].values
-    highs = recent["high"].values
-    lows = recent["low"].values
-    closes = recent["close"].values
+    opens  = recent["open"].values.astype(float)
+    highs  = recent["high"].values.astype(float)
+    lows   = recent["low"].values.astype(float)
+    closes = recent["close"].values.astype(float)
 
-    price_mean = closes.mean()
+    price_mean = np.mean(closes)
+    if price_mean == 0 or np.isnan(price_mean):
+        return True
 
     # -----------------------------------------------------------
-    # 1. BASIC RANGE TEST (same as before, slightly stricter)
+    # 1. BASIC RANGE TEST
     # -----------------------------------------------------------
-    price_range_ratio = (closes.max() - closes.min()) / price_mean
+    price_range_ratio = (np.max(closes) - np.min(closes)) / price_mean
     if price_range_ratio < min_range_ratio:
         return True
 
     # -----------------------------------------------------------
-    # 2. BASIC VOLATILITY TEST (slightly stricter)
+    # 2. BASIC VOLATILITY TEST
     # -----------------------------------------------------------
-    price_std_ratio = closes.std() / price_mean
+    price_std_ratio = np.std(closes) / price_mean
     if price_std_ratio < min_volatility_ratio:
         return True
 
     # -----------------------------------------------------------
-    # 3. ACTIVE CANDLE COUNT (using median instead of mean)
+    # 3. ACTIVE CANDLE COUNT
     # -----------------------------------------------------------
-    bodies = (closes - opens).abs() / price_mean
-    active_candle_count = (bodies > 0.0003).sum()
+    bodies = np.abs(closes - opens) / price_mean   # FIXED HERE
+    active_candle_count = np.sum(bodies > 0.0003)
     if active_candle_count < min_active_candles:
         return True
 
@@ -187,22 +189,19 @@ def is_dead_chart(
         return True
 
     # -----------------------------------------------------------
-    # 5. MICRO-RANGE CANDLE TEST (new)
-    # detect if candles barely move at all
+    # 5. MICRO-RANGE CANDLE TEST
     # -----------------------------------------------------------
     ranges = (highs - lows) / price_mean
-    micro_candles = (ranges < max_micro_range_ratio).sum()
-
+    micro_candles = np.sum(ranges < max_micro_range_ratio)
     if micro_candles / lookback > max_micro_range_fraction:
         return True
 
     # -----------------------------------------------------------
-    # 6. FLAT-RUN TEST (new)
-    # detect long sequences of open == close
+    # 6. FLAT-RUN TEST
     # -----------------------------------------------------------
     flat_run = 0
     for i in range(1, lookback):
-        if opens[i] == closes[i] == closes[i-1]:
+        if opens[i] == closes[i] == closes[i - 1]:
             flat_run += 1
             if flat_run >= max_flat_run:
                 return True
