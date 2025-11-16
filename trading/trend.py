@@ -210,6 +210,32 @@ def is_dead_chart(
 
     return False
 
+def is_choppy_chart(df, lookback=60, min_efficiency=0.25):
+    """
+    Detects a chart that has movement but no directional efficiency
+    (range-bound, noisy, fake-breakout behavior).
+    """
+
+    if len(df) < lookback:
+        return True  # not enough data → skip
+
+    recent = df.tail(lookback)
+    closes = recent["close"].values
+
+    # Net directional move
+    net_move = abs(closes[-1] - closes[0])
+
+    # Sum of absolute intrabar moves (zig-zag)
+    total_move = sum(abs(closes[i] - closes[i-1]) for i in range(1, lookback))
+
+    if total_move == 0:
+        return True  # no movement at all
+
+    efficiency = net_move / total_move
+
+    # If efficiency is too low → pure chop like BB chart
+    return efficiency < min_efficiency
+
 def classify_trend_or_range(symbol, lookback=50, threshold=0.0003):
     """
     Cached wrapper for trend/range classification.
@@ -246,6 +272,10 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
     df_1minute = exchange.fetch_1m_ohlcv(symbol)
     if is_dead_chart(df_1minute):
         debug(f"[{symbol}] was dismissed. 1-minute chart seems dead.")
+        return 0.0
+
+    if is_choppy_chart(df_1minute):
+        debug(f"[{symbol}] was dismissed. 1-minute chart seems choppy.")
         return 0.0
 
     df = exchange.fetch_5m_ohlcv(symbol)
