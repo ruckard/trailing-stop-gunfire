@@ -132,6 +132,84 @@ def is_low_volatility_symbol(
         print_with_date(f"[ERROR] Failed to calculate volatility for {symbol}: {e}")
         return False, 0.0
 
+def is_dead_chart(
+    df,
+    lookback=60,
+    min_range_ratio=0.0020,
+    min_volatility_ratio=0.0015,
+    min_active_candles=6,
+    min_unique_prices=12,
+    max_micro_range_ratio=0.0004,
+    max_micro_range_fraction=0.70,
+    max_flat_run=10,
+):
+    """
+    Improved dead-chart detector for ultra-flat, illiquid or inactive symbols.
+    """
+
+    if len(df) < lookback:
+        return True
+
+    recent = df.tail(lookback)
+    opens  = recent["open"].values.astype(float)
+    highs  = recent["high"].values.astype(float)
+    lows   = recent["low"].values.astype(float)
+    closes = recent["close"].values.astype(float)
+
+    price_mean = np.mean(closes)
+    if price_mean == 0 or np.isnan(price_mean):
+        return True
+
+    # -----------------------------------------------------------
+    # 1. BASIC RANGE TEST
+    # -----------------------------------------------------------
+    price_range_ratio = (np.max(closes) - np.min(closes)) / price_mean
+    if price_range_ratio < min_range_ratio:
+        return True
+
+    # -----------------------------------------------------------
+    # 2. BASIC VOLATILITY TEST
+    # -----------------------------------------------------------
+    price_std_ratio = np.std(closes) / price_mean
+    if price_std_ratio < min_volatility_ratio:
+        return True
+
+    # -----------------------------------------------------------
+    # 3. ACTIVE CANDLE COUNT
+    # -----------------------------------------------------------
+    bodies = np.abs(closes - opens) / price_mean   # FIXED HERE
+    active_candle_count = np.sum(bodies > 0.0003)
+    if active_candle_count < min_active_candles:
+        return True
+
+    # -----------------------------------------------------------
+    # 4. UNIQUE PRICE TEST
+    # -----------------------------------------------------------
+    if len(set(closes)) < min_unique_prices:
+        return True
+
+    # -----------------------------------------------------------
+    # 5. MICRO-RANGE CANDLE TEST
+    # -----------------------------------------------------------
+    ranges = (highs - lows) / price_mean
+    micro_candles = np.sum(ranges < max_micro_range_ratio)
+    if micro_candles / lookback > max_micro_range_fraction:
+        return True
+
+    # -----------------------------------------------------------
+    # 6. FLAT-RUN TEST
+    # -----------------------------------------------------------
+    flat_run = 0
+    for i in range(1, lookback):
+        if opens[i] == closes[i] == closes[i - 1]:
+            flat_run += 1
+            if flat_run >= max_flat_run:
+                return True
+        else:
+            flat_run = 0
+
+    return False
+
 def classify_trend_or_range(symbol, lookback=50, threshold=0.0003):
     """
     Cached wrapper for trend/range classification.
@@ -164,6 +242,11 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
     - Adds EMA confirmation and trend persistence boost.
     - Returns {'score': float, 'stop_loss': float} or 0.0
     """
+
+    df_1minute = exchange.fetch_1m_ohlcv(symbol)
+    if is_dead_chart(df_1minute):
+        debug(f"[{symbol}] was dismissed. 1-minute chart seems dead.")
+        return 0.0
 
     df = exchange.fetch_5m_ohlcv(symbol)
     if (not isinstance(df, pd.DataFrame)):

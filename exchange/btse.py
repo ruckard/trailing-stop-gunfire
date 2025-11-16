@@ -15,7 +15,9 @@ from utils import print_with_date, lock_guard, debug
 from client.cache import api_cache_fetch
 
 OHLCV_CACHE = {}
+OHLCV_1MINUTE_CACHE = {}
 OHLCV_CACHE_TIMEOUT = timedelta(minutes=1)
+OHLCV_1MINUTE_CACHE_TIMEOUT = timedelta(minutes=1)
 
 # ===============================
 # Others
@@ -125,6 +127,12 @@ def prune_ohlcv_cache():
     for sym in expired:
         del OHLCV_CACHE[sym]
 
+def prune_ohlcv_1minute_cache():
+    now = datetime.utcnow()
+    expired = [sym for sym, (_, ts) in OHLCV_1MINUTE_CACHE.items() if now - ts >= OHLCV_1MINUTE_CACHE_TIMEOUT]
+    for sym in expired:
+        del OHLCV_1MINUTE_CACHE[sym]
+
 def fetch_5m_ohlcv_real(symbol, limit=100):
     url = f"{BASE_URL}/api/v2.2/ohlcv"
     end_time = int(time.time() * 1000)  # current timestamp in ms
@@ -160,6 +168,43 @@ def fetch_5m_ohlcv(symbol, limit=100):
     # Otherwise, fetch fresh data and cache it
     df = api_cache_fetch("fetch_5m_ohlcv_real", symbol, limit)
     OHLCV_CACHE[symbol] = (df, datetime.utcnow())
+    return df
+
+def fetch_1m_ohlcv_real(symbol, limit=100):
+    url = f"{BASE_URL}/api/v2.2/ohlcv"
+    end_time = int(time.time() * 1000)  # current timestamp in ms
+    params = {
+        'symbol': symbol,
+        'resolution': '1',  # 1m candles
+        'end': end_time,
+    }
+    response = throttled_request("GET", url, params=params)
+    response.raise_for_status()
+    data = response.json()
+
+    if not data or len(data) < 20:
+        print_with_date(f"[ERROR] Not enough candle data to calculate ATR for {symbol}")
+        return None
+
+    df = pd.DataFrame(data, columns=["timestamp", "open", "high", "low", "close", "volume"])
+    df = df.sort_values('timestamp')
+    return df
+
+def fetch_1m_ohlcv(symbol, limit=100):
+    """
+    Cached wrapper around fetch_1m_ohlcv_real.
+    Prunes expired entries and uses cache if available.
+    """
+    # Remove expired cache entries first
+    prune_ohlcv_1minute_cache()
+
+    # If symbol is cached after pruning, it's valid
+    if symbol in OHLCV_1MINUTE_CACHE:
+        return OHLCV_1MINUTE_CACHE[symbol][0]
+
+    # Otherwise, fetch fresh data and cache it
+    df = api_cache_fetch("fetch_1m_ohlcv_real", symbol, limit)
+    OHLCV_1MINUTE_CACHE[symbol] = (df, datetime.utcnow())
     return df
 
 # ===============================
