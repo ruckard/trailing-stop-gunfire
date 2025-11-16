@@ -5,6 +5,10 @@ def fetch_5m_ohlcv_real(symbol, limit=100):
     """Wrapper for BTSE 5m OHLCV fetch."""
     return btse.fetch_5m_ohlcv_real(symbol, limit=limit)
 
+def fetch_1m_ohlcv_real(symbol, limit=100):
+    """Wrapper for BTSE 1m OHLCV fetch."""
+    return btse.fetch_1m_ohlcv_real(symbol, limit=limit)
+
 def fetch_contract_sizes(symbols):
     """Wrapper for BTSE contract sizes fetch."""
     return btse.fetch_contract_sizes(symbols)

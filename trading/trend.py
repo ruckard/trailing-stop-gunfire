@@ -132,6 +132,68 @@ def is_low_volatility_symbol(
         print_with_date(f"[ERROR] Failed to calculate volatility for {symbol}: {e}")
         return False, 0.0
 
+def is_dead_chart(
+    df,
+    lookback=60,
+    min_range_ratio=0.0015,
+    min_volatility_ratio=0.001,
+    min_active_candles=5,
+    min_unique_prices=10,
+):
+    """
+    Returns True if the chart is 'dead' (illiquid, flat, zero-volatility), similar to SPX example.
+
+    PARAMETERS
+    ----------
+    df : pandas DataFrame
+        Must contain open, high, low, close.
+    lookback : int
+        Number of most recent candles to evaluate.
+    min_range_ratio : float
+        Minimum (max - min) / mean(close) required over lookback window.
+    min_volatility_ratio : float
+        Minimum std(close) / mean(close) required.
+    min_active_candles : int
+        Minimum number of candles with a body > threshold.
+    min_unique_prices : int
+        Minimum number of unique close prices required.
+    """
+
+    if len(df) < lookback:
+        return True  # not enough data → considered bad
+
+    recent = df.tail(lookback)
+
+    closes = recent["close"]
+    opens = recent["open"]
+
+    price_mean = closes.mean()
+
+    # --- 1. RANGE TEST (detects flat charts)
+    price_range_ratio = (closes.max() - closes.min()) / price_mean
+
+    if price_range_ratio < min_range_ratio:
+        return True
+
+    # --- 2. VOLATILITY TEST
+    price_std_ratio = closes.std() / price_mean
+
+    if price_std_ratio < min_volatility_ratio:
+        return True
+
+    # --- 3. ACTIVE CANDLE COUNT (detects micro-candles)
+    bodies = (closes - opens).abs() / price_mean
+    active_candle_count = (bodies > 0.0003).sum()  # 0.03% body size threshold
+
+    if active_candle_count < min_active_candles:
+        return True
+
+    # --- 4. UNIQUE PRICE TEST
+    if closes.nunique() < min_unique_prices:
+        return True
+
+    return False
+
 def classify_trend_or_range(symbol, lookback=50, threshold=0.0003):
     """
     Cached wrapper for trend/range classification.
@@ -164,6 +226,11 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
     - Adds EMA confirmation and trend persistence boost.
     - Returns {'score': float, 'stop_loss': float} or 0.0
     """
+
+    df_1minute = exchange.fetch_1m_ohlcv(symbol)
+    if is_dead_chat(df_1minute):
+        debug(f"[{symbol}] was dismissed. 1-minute chart seems dead.")
+        return 0.0
 
     df = exchange.fetch_5m_ohlcv(symbol)
     if (not isinstance(df, pd.DataFrame)):
