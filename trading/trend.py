@@ -272,7 +272,7 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
 
     df_1minute = exchange.fetch_1m_ohlcv(symbol)
     if is_dead_chart(df_1minute):
-        debug(f"[{symbol}] was dismissed. 1-minute chart seems dead.")
+        print_with_date(f"[{symbol}] was dismissed. 1-minute chart seems dead.")
         return 0.0
 
     if is_choppy_chart(df_1minute):
