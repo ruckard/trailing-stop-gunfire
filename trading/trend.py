@@ -14,6 +14,10 @@ DEAD_CHART_CACHE = {}
 DEAD_FORCE_REFRESH_HOURS = 24          # full recalc required after 24h
 DEAD_MIN_SPACING_MINUTES = 30          # cannot refresh more frequently than this
 
+CHOPPY_CHART_CACHE = {}
+CHOPPY_FORCE_REFRESH_HOURS = 24
+CHOPPY_MIN_SPACING_MINUTES = 30
+
 def place_trend_positions(symbol, sides):
     # TODO: Maybe improve it so that we don't have a lazy import
     from trading.orders import place_trailing_stop
@@ -269,31 +273,83 @@ def is_dead_chart(
     DEAD_CHART_CACHE[symbol]["last_refresh"] = now
     return False
 
-def is_choppy_chart(df, lookback=60, min_efficiency=0.25):
+def is_choppy_chart(
+    symbol,
+    lookback=60,
+    min_efficiency=0.25,
+):
     """
-    Detects a chart that has movement but no directional efficiency
-    (range-bound, noisy, fake-breakout behavior).
+    Detects a chart that has movement but no directional efficiency,
+    using smart caching and timed refresh logic.
     """
 
-    if len(df) < lookback:
-        return True  # not enough data → skip
+    now = datetime.utcnow()
 
-    recent = df.tail(lookback)
-    closes = recent["close"].values
+    # -----------------------------------------------------------------------
+    # CACHE LOOKUP & REFRESH LOGIC
+    # -----------------------------------------------------------------------
+    cache = CHOPPY_CHART_CACHE.get(symbol)
 
-    # Net directional move
+    if cache:
+        last_refresh = cache["last_refresh"]
+
+        force_refresh_due = (now - last_refresh) >= timedelta(hours=CHOPPY_FORCE_REFRESH_HOURS)
+        spacing_block = (now - last_refresh) < timedelta(minutes=CHOPPY_MIN_SPACING_MINUTES)
+
+        # If we are NOT forced to refresh AND spacing time has not elapsed → use cache
+        if not force_refresh_due and spacing_block:
+            return cache["is_choppy"]
+
+    else:
+        # First appearance for this symbol → force refresh by default
+        CHOPPY_CHART_CACHE[symbol] = {
+            "is_choppy": True,
+            "last_refresh": datetime(2000, 1, 1),
+        }
+        cache = CHOPPY_CHART_CACHE[symbol]
+
+    # -----------------------------------------------------------------------
+    # FETCH 1-MINUTE OHLCV
+    # -----------------------------------------------------------------------
+    try:
+        df_1minute = exchange.fetch_1m_ohlcv(symbol)
+    except Exception:
+        CHOPPY_CHART_CACHE[symbol]["is_choppy"] = True
+        CHOPPY_CHART_CACHE[symbol]["last_refresh"] = now
+        return True
+
+    if df_1minute is None or len(df_1minute) < lookback:
+        CHOPPY_CHART_CACHE[symbol]["is_choppy"] = True
+        CHOPPY_CHART_CACHE[symbol]["last_refresh"] = now
+        return True
+
+    df = df_1minute.tail(lookback)
+    closes = df["close"].values.astype(float)
+
+    # -----------------------------------------------------------------------
+    # CHOPPINESS CALCULATION
+    # -----------------------------------------------------------------------
+
+    # Directional movement
     net_move = abs(closes[-1] - closes[0])
 
-    # Sum of absolute intrabar moves (zig-zag)
-    total_move = sum(abs(closes[i] - closes[i-1]) for i in range(1, lookback))
+    # Zig-zag intrabar movement
+    total_move = abs(closes[1:] - closes[:-1]).sum()
 
     if total_move == 0:
-        return True  # no movement at all
+        result = True
 
-    efficiency = net_move / total_move
+    else:
+        efficiency = net_move / total_move
+        result = efficiency < min_efficiency
 
-    # If efficiency is too low → pure chop like BB chart
-    return efficiency < min_efficiency
+    # -----------------------------------------------------------------------
+    # STORE RESULT
+    # -----------------------------------------------------------------------
+    CHOPPY_CHART_CACHE[symbol]["is_choppy"] = result
+    CHOPPY_CHART_CACHE[symbol]["last_refresh"] = now
+
+    return result
 
 def classify_trend_or_range(symbol, lookback=50, threshold=0.0003):
     """
@@ -332,9 +388,7 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
         debug(f"[{symbol}] was dismissed. 1-minute chart seems dead.")
         return 0.0
 
-    df_1minute = exchange.fetch_1m_ohlcv(symbol)
-
-    if is_choppy_chart(df_1minute):
+    if is_choppy_chart(symbol):
         debug(f"[{symbol}] was dismissed. 1-minute chart seems choppy.")
         return 0.0
 
