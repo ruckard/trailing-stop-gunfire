@@ -6,6 +6,7 @@ import state
 import db.positions as positionsdb
 from trading.common import get_dynamic_trade_max_candles
 import pandas as pd
+from datetime import datetime, timedelta
 
 TRENDRANGE_CACHE = {}
 
@@ -133,7 +134,7 @@ def is_low_volatility_symbol(
         return False, 0.0
 
 def is_dead_chart(
-    df,
+    symbol,
     lookback=60,
     min_range_ratio=0.0020,
     min_volatility_ratio=0.0015,
@@ -144,20 +145,59 @@ def is_dead_chart(
     max_flat_run=10,
 ):
     """
-    Improved dead-chart detector for ultra-flat, illiquid or inactive symbols.
+    Dead-chart detector with smart caching and forced/spacing-based refresh logic.
     """
+    now = datetime.utcnow()
 
-    if len(df) < lookback:
+    # -----------------------------------------------------------------------
+    # 1. CACHE LOOKUP & REFRESH LOGIC
+    # -----------------------------------------------------------------------
+    cache = DEAD_CHART_CACHE.get(symbol)
+
+    if cache:
+        last_refresh = cache["last_refresh"]
+
+        force_refresh_due = (now - last_refresh) >= timedelta(hours=DEAD_FORCE_REFRESH_HOURS)
+        spacing_block = (now - last_refresh) < timedelta(minutes=DEAD_MIN_SPACING_MINUTES)
+
+        # Reuse cached value if:
+        # - not forced to refresh
+        # - AND we are inside the spacing block
+        if not force_refresh_due and spacing_block:
+            return cache["is_dead"]
+    else:
+        # First time seen: initialize to allow immediate computation
+        DEAD_CHART_CACHE[symbol] = {
+            "is_dead": False,
+            "last_refresh": datetime(2000, 1, 1),  # effectively forces first refresh
+        }
+        cache = DEAD_CHART_CACHE[symbol]
+
+    # -----------------------------------------------------------------------
+    # 2. FETCH 1-MINUTE DATA
+    # -----------------------------------------------------------------------
+    try:
+        df_1minute = exchange.fetch_1m_ohlcv(symbol)
+    except Exception:
+        DEAD_CHART_CACHE[symbol]["is_dead"] = True
+        DEAD_CHART_CACHE[symbol]["last_refresh"] = now
         return True
 
-    recent = df.tail(lookback)
-    opens  = recent["open"].values.astype(float)
-    highs  = recent["high"].values.astype(float)
-    lows   = recent["low"].values.astype(float)
-    closes = recent["close"].values.astype(float)
+    if df_1minute is None or len(df_1minute) < lookback:
+        DEAD_CHART_CACHE[symbol]["is_dead"] = True
+        DEAD_CHART_CACHE[symbol]["last_refresh"] = now
+        return True
+
+    df = df_1minute.tail(lookback)
+    opens  = df["open"].values.astype(float)
+    highs  = df["high"].values.astype(float)
+    lows   = df["low"].values.astype(float)
+    closes = df["close"].values.astype(float)
 
     price_mean = np.mean(closes)
     if price_mean == 0 or np.isnan(price_mean):
+        DEAD_CHART_CACHE[symbol]["is_dead"] = True
+        DEAD_CHART_CACHE[symbol]["last_refresh"] = now
         return True
 
     # -----------------------------------------------------------
@@ -165,6 +205,8 @@ def is_dead_chart(
     # -----------------------------------------------------------
     price_range_ratio = (np.max(closes) - np.min(closes)) / price_mean
     if price_range_ratio < min_range_ratio:
+        DEAD_CHART_CACHE[symbol]["is_dead"] = True
+        DEAD_CHART_CACHE[symbol]["last_refresh"] = now
         return True
 
     # -----------------------------------------------------------
@@ -172,20 +214,26 @@ def is_dead_chart(
     # -----------------------------------------------------------
     price_std_ratio = np.std(closes) / price_mean
     if price_std_ratio < min_volatility_ratio:
+        DEAD_CHART_CACHE[symbol]["is_dead"] = True
+        DEAD_CHART_CACHE[symbol]["last_refresh"] = now
         return True
 
     # -----------------------------------------------------------
     # 3. ACTIVE CANDLE COUNT
     # -----------------------------------------------------------
-    bodies = np.abs(closes - opens) / price_mean   # FIXED HERE
+    bodies = np.abs(closes - opens) / price_mean
     active_candle_count = np.sum(bodies > 0.0003)
     if active_candle_count < min_active_candles:
+        DEAD_CHART_CACHE[symbol]["is_dead"] = True
+        DEAD_CHART_CACHE[symbol]["last_refresh"] = now
         return True
 
     # -----------------------------------------------------------
     # 4. UNIQUE PRICE TEST
     # -----------------------------------------------------------
     if len(set(closes)) < min_unique_prices:
+        DEAD_CHART_CACHE[symbol]["is_dead"] = True
+        DEAD_CHART_CACHE[symbol]["last_refresh"] = now
         return True
 
     # -----------------------------------------------------------
@@ -194,6 +242,8 @@ def is_dead_chart(
     ranges = (highs - lows) / price_mean
     micro_candles = np.sum(ranges < max_micro_range_ratio)
     if micro_candles / lookback > max_micro_range_fraction:
+        DEAD_CHART_CACHE[symbol]["is_dead"] = True
+        DEAD_CHART_CACHE[symbol]["last_refresh"] = now
         return True
 
     # -----------------------------------------------------------
@@ -204,10 +254,15 @@ def is_dead_chart(
         if opens[i] == closes[i] == closes[i - 1]:
             flat_run += 1
             if flat_run >= max_flat_run:
+                DEAD_CHART_CACHE[symbol]["is_dead"] = True
+                DEAD_CHART_CACHE[symbol]["last_refresh"] = now
                 return True
         else:
             flat_run = 0
 
+    # Passed all tests → alive
+    DEAD_CHART_CACHE[symbol]["is_dead"] = False
+    DEAD_CHART_CACHE[symbol]["last_refresh"] = now
     return False
 
 def is_choppy_chart(df, lookback=60, min_efficiency=0.25):
