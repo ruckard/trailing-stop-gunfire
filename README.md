@@ -96,50 +96,50 @@ You can use `python symbols_setup.py` for doing that in an automatic way.
 
 ## Usage
 
-Just run:
+To operate the system, you must run the API daemon and the trading engine in separate terminal buffers.
+
+### 1. Start the API daemon
+
+Run the following command in a persistent session (screen, tmux, byobu, or similar):
+
+```
+python api_daemon.py
+```
+
+This daemon manages all real‑time exchange interactions and must remain active while the trading engine is running.
+
+### 2. Start the trading engine
+
+In a **separate** buffer or session, run:
 
 ```
 python main.py
 ```
 
-in a screen, tmux, byobu session.
+The trading engine will connect to the daemon, execute the trading cycle, and manage runtime logic.
 
-## Output examples
+## Output Examples
 
-### Resuming from save state
+Actual outputs will differ from the examples below because the system no longer uses trailing stops and now relies on the API daemon for data flow. These samples illustrate the general structure only.
 
-```
-[2025-07-11 22:39:46] [ATR] BTC-PERP ATR(14) = 1677.16, % = 1.51, TRAILING_START = 0.51%
-[2025-07-11 22:39:47] [ATR] ETH-PERP ATR(14) = 64.00, % = 2.35, TRAILING_START = 0.8%
-[2025-07-11 22:39:48] [CONTRACTS_MAP] {'BTC-PERP': 1, 'ETH-PERP': 3}
-[2025-07-11 22:39:48] [POSITIONS LOADED FROM DB]
-[2025-07-11 22:39:48] [STORED] BTC-PERP | LONG | Callback: 0.64%
-[2025-07-11 22:39:48] [STORED] BTC-PERP | SHORT | Callback: 0.64%
-[2025-07-11 22:39:48] [STORED] BTC-PERP | LONG | Callback: 0.88%
-[2025-07-11 22:39:48] [STORED] BTC-PERP | SHORT | Callback: 0.88%
-[2025-07-11 22:39:48] [POSITIONS LOADED FROM DB]
-[2025-07-11 22:39:48] [STORED] ETH-PERP | LONG | Callback: 0.87%
-[2025-07-11 22:39:48] [STORED] ETH-PERP | SHORT | Callback: 0.87%
-[2025-07-11 22:39:48] [STORED] ETH-PERP | LONG | Callback: 1.16%
-[2025-07-11 22:39:48] [STORED] ETH-PERP | SHORT | Callback: 1.16%
-[2025-07-11 22:39:48] CSCSCSCS
-```
-
-### Not reopening a lost trade
+### Example: Loading state on startup
 
 ```
-SC[2025-07-11 17:59:43] [ERROR] Position with position_id: ETH-PERP-USDT|6#11 not found.                                                                                                     
-[2025-07-11 17:59:43] [CLOSED?] ETH-PERP long-1 position_id not found. Checking trade history...                                                                                             
-[2025-07-11 17:59:46] [CLOSED/TRADE] ETH-PERP long-1 | Realized PnL: -0.00402755                                                                                                             
+[2025-07-11 22:39:48] [STATE] Loaded saved cycle and symbol context
+[2025-07-11 22:39:48] [SYMBOLS] Active: BTC-PERP, ETH-PERP
+[2025-07-11 22:39:48] [POSITIONS] Restored 4 open positions from database
+```
+
+### Example: Not reopening a losing trade
+
+```
+[2025-07-11 17:59:46] [CLOSED/TRADE] ETH-PERP long-1 | Realized PnL: -0.00402755
 [2025-07-11 17:59:46] [LOSS] Not reopening ETH-PERP long-1
 ```
 
-### Reopening a won trade
+### Example: Reopening a winning trade
 
 ```
-SCSCSCSCSCSCSCSCSC[2025-07-11 17:54:34] [ERROR] Position with position_id: BTC-PERP-USDT|4#267 not found.                                                                                    
-[2025-07-11 17:54:34] [CLOSED?] BTC-PERP long-1 position_id not found. Checking trade history...                                                                                             
-[2025-07-11 17:54:37] [CLOSED/TRADE] BTC-PERP long-1 | Realized PnL: 0.00851985                                                                                                              
-[2025-07-11 17:54:37] [WIN] Reopening BTC-PERP long-1                                                                                                                                        
-[2025-07-11 17:54:40] [NEW] BTC-PERP | LONG | Callback: 0.88% 
+[2025-07-11 17:54:37] [CLOSED/TRADE] BTC-PERP long-1 | Realized PnL: 0.00851985
+[2025-07-11 17:54:37] [WIN] Reopening BTC-PERP long-1
 ```
