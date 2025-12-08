@@ -2,8 +2,9 @@
 
 ## Introduction
 
-This is trading script based on firing several trailing stop trades for a single symbol.
-It keeps re-opening trailing stops that do end in a win trade.
+This trading system executes Fibonacci-based retracement entries that follow the prevailing market trend. It identifies dominant directional momentum using high-conviction impulse candles, then waits for price to retrace into predefined Fibonacci levels before initiating a continuation trade. The strategy’s core objective is to exploit trend-aligned pullbacks that occur after strong expansion moves, using volatility-adjusted thresholds and structural filters to improve signal quality and execution accuracy.
+
+The Trailing Stop Gunfire name comes from initial implementations that did trailing stops.
 
 ## Setup
 
