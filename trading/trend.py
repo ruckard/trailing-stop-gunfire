@@ -10,6 +10,10 @@ from datetime import datetime, timedelta
 
 TRENDRANGE_CACHE = {}
 
+DEAD_CHART_CACHE = {}
+DEAD_FORCE_REFRESH_HOURS = 24          # full recalc required after 24h
+DEAD_MIN_SPACING_MINUTES = 30          # cannot refresh more frequently than this
+
 def place_trend_positions(symbol, sides):
     # TODO: Maybe improve it so that we don't have a lazy import
     from trading.orders import place_trailing_stop
