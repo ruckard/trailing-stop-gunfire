@@ -21,18 +21,43 @@ CHOPPY_MIN_SPACING_MINUTES = 30
 def place_trend_positions(symbol, sides):
     # TODO: Maybe improve it so that we don't have a lazy import
     from trading.orders import place_trailing_stop
+
+    # Fetch the previously saved score for this symbol
+    trend_score_result = state.TREND_SCORES_TMP.get(symbol)
+    if trend_score_result is None:
+        print_with_date(f"[WARN] No trend score found for {symbol}. Skipping position placement.")
+        return
+
+    trend_score_value = float(trend_score_result)  # this is the score from calculate_easy_trend10_with_rsi
+
+    # Compute dynamic multiplier based on score magnitude
+    def score_to_dynamic_multiplier(score: float, scale=2000.0) -> float:
+        import numpy as np
+        return np.tanh(abs(score) * scale)
+
+    score_multiplier = score_to_dynamic_multiplier(trend_score_value)
+
+    # Iterate over trailing callbacks
     for i, callback in enumerate(state.TRAILING_STOPS_MAP[symbol]):
-        #for side in ["LONG"]:
         for side in sides:
             pid = f"{side.lower()}-{i}"
-            contracts = state.CONTRACTS_MAP.get(symbol, 1)
+
+            # Base contracts (capped by 80% total allocation)
+            base_contracts = state.CONTRACTS_MAP.get(symbol, 1)
+
+            # Scale dynamically by trend score
+            contracts = max(1, int(base_contracts * score_multiplier))
+
             result = place_trailing_stop(symbol, side, callback, contracts)
             # Check if the result is valid (i.e., position_id and opening_order_id and closing_order_id are returned)
+
             if result is None or result[0] is None or result[1] is None or result[2] is None:
                 print_with_date(f"[ERROR] Failed to place trailing stop for {symbol} {side} at {callback}%")
                 continue
+
             pos_id, opening_order_id, closing_order_id, opening_price, trail_value, score = result
-            max_candles = get_dynamic_trade_max_candles(symbol, score)
+            max_candles = get_dynamic_trade_max_candles(symbol, trend_score_value)
+
             state.positions[symbol][pid] = {
                 "position_id": pos_id,
                 "opening_order_id": opening_order_id,
@@ -40,11 +65,12 @@ def place_trend_positions(symbol, sides):
                 "side": side,
                 "callback": callback,
                 "active": True,
-                "opening_price" : opening_price,
-                "trail_value" : trail_value,
+                "opening_price": opening_price,
+                "trail_value": trail_value,
                 "opened_at": time.time(),
                 "max_candles": max_candles
             }
+
             position_info = state.positions[symbol][pid]
             positionsdb.update_position(pid, position_info, symbol)
 
@@ -54,19 +80,25 @@ def classify_trend_or_range_real(symbol, lookback=50, threshold=0.0003):
     Returns: 'trend', 'range', or 'unknown'
     """
     try:
-        score = calculate_easy_trend10_with_rsi(symbol, lookback=lookback)
+        result = calculate_easy_trend10_with_rsi(symbol, lookback=lookback)
 
-        if isinstance(score, dict):
-            score_value = score.get("score", 0.0)
+        # Extract raw slope if available
+        if isinstance(result, dict):
+            score_value = result.get("score", 0.0)
+            # Use raw_slope if we want threshold comparison to ignore confidence
+            raw_slope = result.get("raw_slope", score_value)
         else:
-            score_value = score
+            score_value = result
+            raw_slope = result
 
-        if score_value == 0.0:
+        # --- CLASSIFICATION BASED ON RAW SLOPE ---
+        if raw_slope == 0.0:
             return "range"
-        elif abs(score_value) >= threshold:
+        elif abs(raw_slope) >= threshold:
             return "trend"
         else:
             return "range"
+
     except Exception as e:
         print_with_date(f"[ERROR] Classify failed for {symbol}: {e}")
         return "unknown"
@@ -383,6 +415,8 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
     - Adds EMA confirmation and trend persistence boost.
     - Returns {'score': float, 'stop_loss': float} or 0.0
     """
+    def _clamp(x, lo, hi):
+        return max(lo, min(x, hi))
 
     if is_dead_chart(symbol):
         debug(f"[{symbol}] was dismissed. 1-minute chart seems dead.")
@@ -441,6 +475,8 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
     # --- Weighted average of slopes (recent > past)
     weights = np.linspace(0.2, 1.0, len(segment_slopes))
     slope_normalized = np.average(segment_slopes, weights=weights)
+    # Save base score for confidence multipliers
+    base_score = slope_normalized
 
     positive_count = sum(1 for s in segment_slopes if s > 0)
     negative_count = sum(1 for s in segment_slopes if s < 0)
@@ -461,30 +497,30 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
         f"PosCount={positive_count}, NegCount={negative_count}"
     )
 
-    # --- RSI soft boost (not filter)
+    # RSI
+    rsi_conf = 1.0
     try:
         rsi = ta.RSI(df['close'], timeperiod=rsi_period).iloc[-1]
-        rsi_boost = 1.0
-        if 55 < rsi < 70:
-            rsi_boost = 1.2  # bullish support
-        elif 30 < rsi < 45:
-            rsi_boost = 1.2  # bearish support
-        slope_normalized *= rsi_boost
+        rsi_distance = abs(rsi - 50.0) / 25.0   # 0 → 2
+        rsi_conf = 1.0 + _clamp(rsi_distance * 0.05, -0.10, 0.10)
     except Exception:
         pass
 
-    # --- EMA confirmation filter
+    # EMA
+    ema_conf = 1.0
     try:
         ema_fast = ta.EMA(df['close'], timeperiod=21).iloc[-1]
         ema_slow = ta.EMA(df['close'], timeperiod=55).iloc[-1]
-        if ema_fast > ema_slow and slope_normalized > 0:
-            slope_normalized *= 1.2
-        elif ema_fast < ema_slow and slope_normalized < 0:
-            slope_normalized *= 1.2
+
+        if base_score > 0:
+            ema_conf = 1.15 if ema_fast > ema_slow else 0.85
         else:
-            slope_normalized *= 0.5
+            ema_conf = 1.15 if ema_fast < ema_slow else 0.85
     except Exception:
         pass
+
+    # Candle
+    candle_conf = 1.0
 
     # --- Trend persistence check (last 10 bars)
     recent_returns = np.diff(np.log(values[-10:]))
@@ -529,6 +565,9 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
             close_position = (prev_close - prev_low) / total_range  # 0 = low, 1 = high
 
             nice_bull = (prev_close > prev_open) and (body_ratio >= 0.6) and (close_position >= 0.75)
+            # Candle quality confidence (bullish)
+            candle_conf = _clamp(0.9 + 0.2 * body_ratio, 0.9, 1.1)
+
             if not nice_bull:
                 debug(f"[{symbol}] Dismissed LONG: previous candle not strong bullish.")
                 return 0.0
@@ -557,7 +596,12 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
         advice_data["trailing_trigger_price"] = long_trailing_trigger_price
         advice_data["stop_loss"] = fib_retrace_long
         advice_data["take_profit"] = early_low + (early_high - early_low) * 0.893
-        return {"score": float(slope_normalized), "advice": advice_data}
+
+        stop_distance_pct = abs(current_price - advice_data["stop_loss"]) / current_price
+        stop_conf = _clamp(1.0 + (stop_distance_pct - 0.005) * 10.0, 0.85, 1.10)
+
+        final_score = slope_normalized * rsi_conf * ema_conf * candle_conf * stop_conf
+        return {"score": float(final_score), "advice": advice_data, "raw_slope": base_score}
 
     elif slope_normalized < 0:
 
@@ -574,6 +618,9 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
             close_position = (prev_close - prev_low) / total_range  # 0 = low, 1 = high
 
             nice_bear = (prev_close < prev_open) and (body_ratio >= 0.6) and (close_position <= 0.25)
+            # Candle quality confidence (bearish)
+            candle_conf = _clamp(0.9 + 0.2 * body_ratio, 0.9, 1.1)
+
             if not nice_bear:
                 debug(f"[{symbol}] Dismissed SHORT: previous candle not strong bearish.")
                 return 0.0
@@ -602,7 +649,12 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
         advice_data["trailing_trigger_price"] = short_trailing_trigger_price
         advice_data["stop_loss"] = fib_retrace_short
         advice_data["take_profit"] = early_high - (early_high - early_low) * 0.893
-        return {"score": float(slope_normalized), "advice": advice_data}
+
+        stop_distance_pct = abs(current_price - advice_data["stop_loss"]) / current_price
+        stop_conf = _clamp(1.0 + (stop_distance_pct - 0.005) * 10.0, 0.85, 1.10)
+
+        final_score = slope_normalized * rsi_conf * ema_conf * candle_conf * stop_conf
+        return {"score": float(final_score), "advice": advice_data, "raw_slope": base_score}
 
     return float(slope_normalized)
 

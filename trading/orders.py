@@ -20,6 +20,8 @@ from trading.analysis import (
 
 import time
 
+import numpy as np
+
 def build_trailing_stops_map():
     result = {}
     for symbol, cfg in state.SYMBOL_CONFIGS.items():
@@ -226,10 +228,35 @@ def place_all_positions(symbol, sides=("LONG", "SHORT")):
     print_with_date(f"[STARTING NEW {symbol} CYCLE]")
     state.positions[symbol].clear()
     positionsdb.clear_positions(symbol)
+
     trend_type = trend.classify_trend_or_range(symbol)
 
     if trend_type == "trend":
+        # Fetch the previously saved score for this symbol
+        trend_score_result = state.TREND_SCORES_TMP.get(symbol)
+        if trend_score_result is None:
+            print_with_date(f"[WARN] No trend score found for {symbol}. Skipping position placement.")
+            return
+
+        trend_score_value = float(trend_score_result)
+
+        # Base contracts
+        base_contracts = state.CONTRACTS_MAP.get(symbol, 1)
+
+        # Compute dynamic multiplier using tanh scaling
+        score_multiplier = np.tanh(abs(trend_score_value) * 2000)
+
+        # Compute projected contracts
+        projected_contracts = base_contracts * score_multiplier
+
+        # Skip symbols whose projected contracts < 1
+        if projected_contracts < 1:
+            print_with_date(f"[SKIP] {symbol} projected contracts {projected_contracts:.2f} < 1. Skipping.")
+            return
+
+        # Place trend positions
         place_trend_positions(symbol, sides)
+
     elif trend_type == "range":
         print_with_date(f"[SKIP] Range detected for: {symbol}. RANGE DISABLED on purpose.")
         #place_range_positions(symbol, sides, entry_offset_pct=state.RANGE_ENTRY_OFFSET_PCT, take_profit_pct=state.RANGE_TAKE_PROFIT_PCT, stop_loss_pct=state.RANGE_STOP_LOSS_PCT)
