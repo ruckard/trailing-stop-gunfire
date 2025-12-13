@@ -10,13 +10,13 @@ from datetime import datetime, timedelta
 
 TRENDRANGE_CACHE = {}
 
-DEAD_CHART_CACHE = {}
-DEAD_FORCE_REFRESH_HOURS = 24          # full recalc required after 24h
-DEAD_MIN_SPACING_MINUTES = 30          # cannot refresh more frequently than this
+ALIVE_CHART_CACHE = {}
+ALIVE_FORCE_REFRESH_HOURS = 1           # full recalc required after 1h
+ALIVE_MIN_SPACING_MINUTES = 10          # cannot refresh more frequently than this
 
-CHOPPY_CHART_CACHE = {}
-CHOPPY_FORCE_REFRESH_HOURS = 24
-CHOPPY_MIN_SPACING_MINUTES = 30
+CHOPPINESS_SCORE_CACHE = {}
+CHOPPY_FORCE_REFRESH_HOURS = 1
+CHOPPY_MIN_SPACING_MINUTES = 10
 
 def place_trend_positions(symbol, sides):
     # TODO: Maybe improve it so that we don't have a lazy import
@@ -173,7 +173,7 @@ def is_low_volatility_symbol(
         debug(f"[ERROR] Failed to calculate volatility for {symbol}: {e}")
         return False, 0.0
 
-def is_dead_chart(
+def alive_chart_score(
     symbol,
     lookback=60,
     min_range_ratio=0.0002,
@@ -185,134 +185,9 @@ def is_dead_chart(
     max_flat_run=30,
 ):
     """
-    Dead-chart detector with smart caching and forced/spacing-based refresh logic.
-    """
-    now = datetime.utcnow()
-
-    # -----------------------------------------------------------------------
-    # 1. CACHE LOOKUP & REFRESH LOGIC
-    # -----------------------------------------------------------------------
-    cache = DEAD_CHART_CACHE.get(symbol)
-
-    if cache:
-        last_refresh = cache["last_refresh"]
-
-        force_refresh_due = (now - last_refresh) >= timedelta(hours=DEAD_FORCE_REFRESH_HOURS)
-        spacing_block = (now - last_refresh) < timedelta(minutes=DEAD_MIN_SPACING_MINUTES)
-
-        # Reuse cached value if:
-        # - not forced to refresh
-        # - AND we are inside the spacing block
-        if not force_refresh_due and spacing_block:
-            return cache["is_dead"]
-    else:
-        # First time seen: initialize to allow immediate computation
-        DEAD_CHART_CACHE[symbol] = {
-            "is_dead": False,
-            "last_refresh": datetime(2000, 1, 1),  # effectively forces first refresh
-        }
-        cache = DEAD_CHART_CACHE[symbol]
-
-    # -----------------------------------------------------------------------
-    # 2. FETCH 1-MINUTE DATA
-    # -----------------------------------------------------------------------
-    try:
-        df_1minute = exchange.fetch_1m_ohlcv(symbol)
-    except Exception:
-        DEAD_CHART_CACHE[symbol]["is_dead"] = True
-        DEAD_CHART_CACHE[symbol]["last_refresh"] = now
-        return True
-
-    if df_1minute is None or len(df_1minute) < lookback:
-        DEAD_CHART_CACHE[symbol]["is_dead"] = True
-        DEAD_CHART_CACHE[symbol]["last_refresh"] = now
-        return True
-
-    df = df_1minute.tail(lookback)
-    opens  = df["open"].values.astype(float)
-    highs  = df["high"].values.astype(float)
-    lows   = df["low"].values.astype(float)
-    closes = df["close"].values.astype(float)
-
-    price_mean = np.mean(closes)
-    if price_mean == 0 or np.isnan(price_mean):
-        DEAD_CHART_CACHE[symbol]["is_dead"] = True
-        DEAD_CHART_CACHE[symbol]["last_refresh"] = now
-        return True
-
-    # -----------------------------------------------------------
-    # 1. BASIC RANGE TEST
-    # -----------------------------------------------------------
-    price_range_ratio = (np.max(closes) - np.min(closes)) / price_mean
-    if price_range_ratio < min_range_ratio:
-        DEAD_CHART_CACHE[symbol]["is_dead"] = True
-        DEAD_CHART_CACHE[symbol]["last_refresh"] = now
-        return True
-
-    # -----------------------------------------------------------
-    # 2. BASIC VOLATILITY TEST
-    # -----------------------------------------------------------
-    price_std_ratio = np.std(closes) / price_mean
-    if price_std_ratio < min_volatility_ratio:
-        DEAD_CHART_CACHE[symbol]["is_dead"] = True
-        DEAD_CHART_CACHE[symbol]["last_refresh"] = now
-        return True
-
-    # -----------------------------------------------------------
-    # 3. ACTIVE CANDLE COUNT
-    # -----------------------------------------------------------
-    bodies = np.abs(closes - opens) / price_mean
-    active_candle_count = np.sum(bodies > 0.0003)
-    if active_candle_count < min_active_candles:
-        DEAD_CHART_CACHE[symbol]["is_dead"] = True
-        DEAD_CHART_CACHE[symbol]["last_refresh"] = now
-        return True
-
-    # -----------------------------------------------------------
-    # 4. UNIQUE PRICE TEST
-    # -----------------------------------------------------------
-    if len(set(closes)) < min_unique_prices:
-        DEAD_CHART_CACHE[symbol]["is_dead"] = True
-        DEAD_CHART_CACHE[symbol]["last_refresh"] = now
-        return True
-
-    # -----------------------------------------------------------
-    # 5. MICRO-RANGE CANDLE TEST
-    # -----------------------------------------------------------
-    ranges = (highs - lows) / price_mean
-    micro_candles = np.sum(ranges < max_micro_range_ratio)
-    if micro_candles / lookback > max_micro_range_fraction:
-        DEAD_CHART_CACHE[symbol]["is_dead"] = True
-        DEAD_CHART_CACHE[symbol]["last_refresh"] = now
-        return True
-
-    # -----------------------------------------------------------
-    # 6. FLAT-RUN TEST
-    # -----------------------------------------------------------
-    flat_run = 0
-    for i in range(1, lookback):
-        if opens[i] == closes[i] == closes[i - 1]:
-            flat_run += 1
-            if flat_run >= max_flat_run:
-                DEAD_CHART_CACHE[symbol]["is_dead"] = True
-                DEAD_CHART_CACHE[symbol]["last_refresh"] = now
-                return True
-        else:
-            flat_run = 0
-
-    # Passed all tests → alive
-    DEAD_CHART_CACHE[symbol]["is_dead"] = False
-    DEAD_CHART_CACHE[symbol]["last_refresh"] = now
-    return False
-
-def is_choppy_chart(
-    symbol,
-    lookback=60,
-    min_efficiency=0.025,
-):
-    """
-    Detects a chart that has movement but no directional efficiency,
-    using smart caching and timed refresh logic.
+    Returns an alive chart score in range [0.0, 1.0].
+    0.0 = effectively dead
+    1.0 = very healthy / active market
     """
 
     now = datetime.utcnow()
@@ -320,7 +195,133 @@ def is_choppy_chart(
     # -----------------------------------------------------------------------
     # CACHE LOOKUP & REFRESH LOGIC
     # -----------------------------------------------------------------------
-    cache = CHOPPY_CHART_CACHE.get(symbol)
+    cache = ALIVE_CHART_CACHE.get(symbol)
+
+    if cache:
+        last_refresh = cache["last_refresh"]
+
+        force_refresh_due = (now - last_refresh) >= timedelta(hours=ALIVE_FORCE_REFRESH_HOURS)
+        spacing_block = (now - last_refresh) < timedelta(minutes=ALIVE_MIN_SPACING_MINUTES)
+
+        if not force_refresh_due and spacing_block:
+            return cache["alive_score"]
+    else:
+        ALIVE_CHART_CACHE[symbol] = {
+            "alive_score": 0.0,
+            "last_refresh": datetime(2000, 1, 1),
+        }
+        cache = ALIVE_CHART_CACHE[symbol]
+
+    # -----------------------------------------------------------------------
+    # FETCH 1-MINUTE DATA
+    # -----------------------------------------------------------------------
+    try:
+        df = exchange.fetch_1m_ohlcv(symbol)
+    except Exception:
+        ALIVE_CHART_CACHE[symbol]["alive_score"] = 0.0
+        ALIVE_CHART_CACHE[symbol]["last_refresh"] = now
+        return 0.0
+
+    if df is None or len(df) < lookback:
+        ALIVE_CHART_CACHE[symbol]["alive_score"] = 0.0
+        ALIVE_CHART_CACHE[symbol]["last_refresh"] = now
+        return 0.0
+
+    df = df.tail(lookback)
+    opens  = df["open"].astype(float).values
+    highs  = df["high"].astype(float).values
+    lows   = df["low"].astype(float).values
+    closes = df["close"].astype(float).values
+
+    price_mean = np.mean(closes)
+    if price_mean <= 0 or np.isnan(price_mean):
+        ALIVE_CHART_CACHE[symbol]["alive_score"] = 0.0
+        ALIVE_CHART_CACHE[symbol]["last_refresh"] = now
+        return 0.0
+
+    # -----------------------------------------------------------------------
+    # 1. RANGE SCORE
+    # -----------------------------------------------------------------------
+    price_range_ratio = (np.max(closes) - np.min(closes)) / price_mean
+    range_score = min(1.0, price_range_ratio / min_range_ratio)
+
+    # -----------------------------------------------------------------------
+    # 2. VOLATILITY SCORE
+    # -----------------------------------------------------------------------
+    price_std_ratio = np.std(closes) / price_mean
+    vol_score = min(1.0, price_std_ratio / min_volatility_ratio)
+
+    # -----------------------------------------------------------------------
+    # 3. ACTIVE CANDLE SCORE
+    # -----------------------------------------------------------------------
+    bodies = np.abs(closes - opens) / price_mean
+    active_count = np.sum(bodies > 0.0003)
+    activity_score = min(1.0, active_count / max(1, min_active_candles))
+
+    # -----------------------------------------------------------------------
+    # 4. PRICE DIVERSITY SCORE
+    # -----------------------------------------------------------------------
+    unique_prices = len(set(closes))
+    diversity_score = min(1.0, unique_prices / max(1, min_unique_prices))
+
+    # -----------------------------------------------------------------------
+    # 5. MICRO-RANGE PENALTY
+    # -----------------------------------------------------------------------
+    ranges = (highs - lows) / price_mean
+    micro_fraction = np.sum(ranges < max_micro_range_ratio) / lookback
+    micro_score = max(0.0, 1.0 - (micro_fraction / max_micro_range_fraction))
+
+    # -----------------------------------------------------------------------
+    # 6. FLAT-RUN PENALTY
+    # -----------------------------------------------------------------------
+    flat_run = 0
+    worst_flat = 0
+    for i in range(1, lookback):
+        if opens[i] == closes[i] == closes[i - 1]:
+            flat_run += 1
+            worst_flat = max(worst_flat, flat_run)
+        else:
+            flat_run = 0
+
+    flat_score = max(0.0, 1.0 - (worst_flat / max_flat_run))
+
+    # -----------------------------------------------------------------------
+    # FINAL ALIVE SCORE
+    # -----------------------------------------------------------------------
+    alive_score = (
+        range_score
+        * vol_score
+        * activity_score
+        * diversity_score
+        * micro_score
+        * flat_score
+    )
+
+    alive_score = float(np.clip(alive_score, 0.0, 1.0))
+
+    ALIVE_CHART_CACHE[symbol]["alive_score"] = alive_score
+    ALIVE_CHART_CACHE[symbol]["last_refresh"] = now
+
+    return alive_score
+
+def choppiness_score(
+    symbol,
+    lookback=60,
+    min_efficiency=0.025,
+):
+    """
+    Returns a choppiness score in range [0.0, 1.0].
+
+    0.0 → highly directional / clean trend
+    1.0 → extremely choppy / noisy
+    """
+
+    now = datetime.utcnow()
+
+    # -----------------------------------------------------------------------
+    # CACHE LOOKUP & REFRESH LOGIC
+    # -----------------------------------------------------------------------
+    cache = CHOPPINESS_SCORE_CACHE.get(symbol)
 
     if cache:
         last_refresh = cache["last_refresh"]
@@ -328,60 +329,59 @@ def is_choppy_chart(
         force_refresh_due = (now - last_refresh) >= timedelta(hours=CHOPPY_FORCE_REFRESH_HOURS)
         spacing_block = (now - last_refresh) < timedelta(minutes=CHOPPY_MIN_SPACING_MINUTES)
 
-        # If we are NOT forced to refresh AND spacing time has not elapsed → use cache
         if not force_refresh_due and spacing_block:
-            return cache["is_choppy"]
+            return cache["choppiness_score"]
 
     else:
-        # First appearance for this symbol → force refresh by default
-        CHOPPY_CHART_CACHE[symbol] = {
-            "is_choppy": True,
+        CHOPPINESS_SCORE_CACHE[symbol] = {
+            "choppiness_score": 1.0,
             "last_refresh": datetime(2000, 1, 1),
         }
-        cache = CHOPPY_CHART_CACHE[symbol]
+        cache = CHOPPINESS_SCORE_CACHE[symbol]
 
     # -----------------------------------------------------------------------
     # FETCH 1-MINUTE OHLCV
     # -----------------------------------------------------------------------
     try:
-        df_1minute = exchange.fetch_1m_ohlcv(symbol)
+        df = exchange.fetch_1m_ohlcv(symbol)
     except Exception:
-        CHOPPY_CHART_CACHE[symbol]["is_choppy"] = True
-        CHOPPY_CHART_CACHE[symbol]["last_refresh"] = now
-        return True
+        CHOPPINESS_SCORE_CACHE[symbol]["choppiness_score"] = 1.0
+        CHOPPINESS_SCORE_CACHE[symbol]["last_refresh"] = now
+        return 1.0
 
-    if df_1minute is None or len(df_1minute) < lookback:
-        CHOPPY_CHART_CACHE[symbol]["is_choppy"] = True
-        CHOPPY_CHART_CACHE[symbol]["last_refresh"] = now
-        return True
+    if df is None or len(df) < lookback:
+        CHOPPINESS_SCORE_CACHE[symbol]["choppiness_score"] = 1.0
+        CHOPPINESS_SCORE_CACHE[symbol]["last_refresh"] = now
+        return 1.0
 
-    df = df_1minute.tail(lookback)
-    closes = df["close"].values.astype(float)
+    df = df.tail(lookback)
+    closes = df["close"].astype(float).values
 
     # -----------------------------------------------------------------------
     # CHOPPINESS CALCULATION
     # -----------------------------------------------------------------------
-
-    # Directional movement
     net_move = abs(closes[-1] - closes[0])
-
-    # Zig-zag intrabar movement
     total_move = abs(closes[1:] - closes[:-1]).sum()
 
-    if total_move == 0:
-        result = True
-
+    if total_move <= 0:
+        choppiness = 1.0
     else:
         efficiency = net_move / total_move
-        result = efficiency < min_efficiency
+
+        # Normalize efficiency into choppiness
+        # efficiency >= min_efficiency → choppiness approaches 0
+        # efficiency → 0 → choppiness approaches 1
+        choppiness = 1.0 - min(1.0, efficiency / min_efficiency)
+
+    choppiness = float(np.clip(choppiness, 0.0, 1.0))
 
     # -----------------------------------------------------------------------
     # STORE RESULT
     # -----------------------------------------------------------------------
-    CHOPPY_CHART_CACHE[symbol]["is_choppy"] = result
-    CHOPPY_CHART_CACHE[symbol]["last_refresh"] = now
+    CHOPPINESS_SCORE_CACHE[symbol]["choppiness_score"] = choppiness
+    CHOPPINESS_SCORE_CACHE[symbol]["last_refresh"] = now
 
-    return result
+    return choppiness
 
 def classify_trend_or_range(symbol, lookback=50, threshold=0.0003):
     """
@@ -418,13 +418,15 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
     def _clamp(x, lo, hi):
         return max(lo, min(x, hi))
 
-    if is_dead_chart(symbol):
-        debug(f"[{symbol}] was dismissed. 1-minute chart seems dead.")
-        return 0.0
+    try:
+        alive_conf_raw = alive_chart_score(symbol)
+        choppy_conf_raw = 1.0 - choppiness_score(symbol)
 
-    if is_choppy_chart(symbol):
-        debug(f"[{symbol}] was dismissed. 1-minute chart seems choppy.")
-        return 0.0
+        alive_chart_score_conf = _clamp(0.5 + 0.5 * alive_conf_raw, 0.5, 1.0)
+        choppiness_score_conf = _clamp(0.5 + 0.5 * choppy_conf_raw, 0.5, 1.0)
+    except Exception:
+        alive_chart_score_conf = 0.75
+        choppiness_score_conf = 0.75
 
     df = exchange.fetch_5m_ohlcv(symbol)
     if (not isinstance(df, pd.DataFrame)):
@@ -600,7 +602,16 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
         stop_distance_pct = abs(current_price - advice_data["stop_loss"]) / current_price
         stop_conf = _clamp(1.0 + (stop_distance_pct - 0.005) * 10.0, 0.85, 1.10)
 
-        final_score = slope_normalized * rsi_conf * ema_conf * candle_conf * stop_conf
+        final_score = (
+            slope_normalized
+            * rsi_conf
+            * ema_conf
+            * candle_conf
+            * stop_conf
+            * alive_chart_score_conf
+            * choppiness_score_conf
+        )
+
         return {"score": float(final_score), "advice": advice_data, "raw_slope": base_score}
 
     elif slope_normalized < 0:
@@ -653,7 +664,16 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
         stop_distance_pct = abs(current_price - advice_data["stop_loss"]) / current_price
         stop_conf = _clamp(1.0 + (stop_distance_pct - 0.005) * 10.0, 0.85, 1.10)
 
-        final_score = slope_normalized * rsi_conf * ema_conf * candle_conf * stop_conf
+        final_score = (
+            slope_normalized
+            * rsi_conf
+            * ema_conf
+            * candle_conf
+            * stop_conf
+            * alive_chart_score_conf
+            * choppiness_score_conf
+        )
+
         return {"score": float(final_score), "advice": advice_data, "raw_slope": base_score}
 
     return float(slope_normalized)
