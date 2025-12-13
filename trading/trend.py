@@ -144,13 +144,13 @@ def is_low_volatility_symbol(
 def is_dead_chart(
     symbol,
     lookback=60,
-    min_range_ratio=0.0012,
-    min_volatility_ratio=0.0009,
-    min_active_candles=4,
-    min_unique_prices=7,
-    max_micro_range_ratio=0.00056,
-    max_micro_range_fraction=0.85,
-    max_flat_run=14,
+    min_range_ratio=0.0002,
+    min_volatility_ratio=0.00015,
+    min_active_candles=1,
+    min_unique_prices=3,
+    max_micro_range_ratio=0.0008,
+    max_micro_range_fraction=0.95,
+    max_flat_run=30,
 ):
     """
     Dead-chart detector with smart caching and forced/spacing-based refresh logic.
@@ -276,7 +276,7 @@ def is_dead_chart(
 def is_choppy_chart(
     symbol,
     lookback=60,
-    min_efficiency=0.15,
+    min_efficiency=0.025,
 ):
     """
     Detects a chart that has movement but no directional efficiency,
