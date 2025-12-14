@@ -31,7 +31,7 @@ def place_trend_positions(symbol, sides):
     trend_score_value = float(trend_score_result)  # this is the score from calculate_easy_trend10_with_rsi
 
     # Compute dynamic multiplier based on score magnitude
-    def score_to_dynamic_multiplier(score: float, scale=2000.0) -> float:
+    def score_to_dynamic_multiplier(score: float, scale=800.0) -> float:
         import numpy as np
         return np.tanh(abs(score) * scale)
 

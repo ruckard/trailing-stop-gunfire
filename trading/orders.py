@@ -244,7 +244,7 @@ def place_all_positions(symbol, sides=("LONG", "SHORT")):
         base_contracts = state.CONTRACTS_MAP.get(symbol, 1)
 
         # Compute dynamic multiplier using tanh scaling
-        score_multiplier = np.tanh(abs(trend_score_value) * 2000)
+        score_multiplier = np.tanh(abs(trend_score_value) * 800)
 
         # Compute projected contracts
         projected_contracts = base_contracts * score_multiplier
