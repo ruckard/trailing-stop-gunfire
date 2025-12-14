@@ -65,7 +65,7 @@ from trading.symbols import (
     filter_symbols_by_rank,
 )
 
-from utils import print_with_date, debug, safe_override_import_or_default
+from utils import print_with_date, debug, safe_override_import_or_default, ai_debug_log
 
 from client.cache import api_cache_fetch
 

@@ -1,6 +1,6 @@
 from . import trend
 from decimal import Decimal, ROUND_HALF_UP, ROUND_HALF_DOWN
-from utils import print_with_date, debug
+from utils import print_with_date, debug, ai_debug_log
 
 from exchange import btse as exchange
 from config import API_KEY, API_SECRET, BASE_URL

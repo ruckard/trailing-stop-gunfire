@@ -1,6 +1,6 @@
 import time
 from exchange import btse as exchange
-from utils import print_with_date, debug
+from utils import print_with_date, debug, ai_debug_log
 import numpy as np
 import state
 import db.positions as positionsdb
