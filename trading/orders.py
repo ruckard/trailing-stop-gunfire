@@ -263,6 +263,16 @@ def place_all_positions(symbol, sides=("LONG", "SHORT")):
     else:
         print_with_date(f"[SKIP] Could not classify trend/range for {symbol}")
 
+    ai_debug_log("position_attempt", {
+        "symbol": symbol,
+        "trend_type": trend_type,
+        "trend_score": trend_score_value if trend_type=="trend" else None,
+        "base_contracts": base_contracts if trend_type=="trend" else None,
+        "projected_contracts": projected_contracts if trend_type=="trend" else None,
+        "sides": sides,
+        "skipped": projected_contracts < 1 if trend_type=="trend" else None
+    })
+
 # === Check and Manage Positions ===
 def check_positions(symbol):
     all_closed = True

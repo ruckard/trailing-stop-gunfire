@@ -612,6 +612,18 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
             * choppiness_score_conf
         )
 
+        ai_debug_log("trend_score", {
+            "symbol": symbol,
+            "base_score": base_score,
+            "final_score": final_score,
+            "rsi": rsi if 'rsi' in locals() else None,
+            "rsi_conf": rsi_conf,
+            "ema_conf": ema_conf,
+            "candle_conf": candle_conf,
+            "alive_chart_score": alive_chart_score(symbol),
+            "choppiness_score": choppiness_score(symbol)
+        })
+
         return {"score": float(final_score), "advice": advice_data, "raw_slope": base_score}
 
     elif slope_normalized < 0:
@@ -673,6 +685,18 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
             * alive_chart_score_conf
             * choppiness_score_conf
         )
+
+        ai_debug_log("trend_score", {
+            "symbol": symbol,
+            "base_score": base_score,
+            "final_score": final_score,
+            "rsi": rsi if 'rsi' in locals() else None,
+            "rsi_conf": rsi_conf,
+            "ema_conf": ema_conf,
+            "candle_conf": candle_conf,
+            "alive_chart_score": alive_chart_score(symbol),
+            "choppiness_score": choppiness_score(symbol)
+        })
 
         return {"score": float(final_score), "advice": advice_data, "raw_slope": base_score}
 

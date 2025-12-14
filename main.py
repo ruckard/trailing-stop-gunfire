@@ -240,8 +240,7 @@ def start_new_cycle(resume=False):
         low_volatility_symbols = []
         for symbol in base_symbols:
             is_low_volatility, volatility_metric = is_low_volatility_symbol(symbol)
-            #if is_low_volatility:
-            if True:
+            if is_low_volatility:
                 low_volatility_symbols.append(symbol)
 
         symbols, long_symbols, short_symbols = filter_symbols_by_rank(
@@ -256,6 +255,12 @@ def start_new_cycle(resume=False):
         # Handle case where no symbols are selected
         if symbols is None or long_symbols is None or short_symbols is None:
             print_with_date("[CYCLE] No valid symbols found. Skipping cycle.")
+            ai_debug_log("symbol_filter", {
+                "filtered_symbols": filtered_symbols,
+                "low_volatility_symbols": low_volatility_symbols,
+                "long_symbols": long_symbols,
+                "short_symbols": short_symbols
+            })
             return None, None, None
 
     state.CONTRACT_SIZES = api_cache_fetch("fetch_contract_sizes", symbols)
@@ -286,6 +291,12 @@ def start_new_cycle(resume=False):
         else:
             show_positions(symbol)
 
+    ai_debug_log("symbol_filter", {
+        "filtered_symbols": filtered_symbols,
+        "low_volatility_symbols": low_volatility_symbols,
+        "long_symbols": long_symbols,
+        "short_symbols": short_symbols
+    })
     return symbols, long_symbols, short_symbols
 
 # === Main Loop ===
