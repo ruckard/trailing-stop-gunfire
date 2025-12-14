@@ -490,7 +490,8 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
 
     positive_count = sum(1 for s in segment_slopes if s > 0)
     negative_count = sum(1 for s in segment_slopes if s < 0)
-    required_count = int(len(segment_slopes) * 0.6)  # 60% rule
+    required_ratio = 0.55 if abs(base_score) < 0.002 else 0.52
+    required_count = int(len(segment_slopes) * required_ratio)
 
     first_candle = early_values[0]
     last_candle = early_values[-1]
