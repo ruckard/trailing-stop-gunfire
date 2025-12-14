@@ -493,6 +493,14 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
     required_ratio = 0.55 if abs(base_score) < 0.002 else 0.52
     required_count = int(len(segment_slopes) * required_ratio)
 
+    ai_debug_log("majority_rule_check", {
+        "symbol": symbol,
+        "pos": positive_count,
+        "neg": negative_count,
+        "required": required_count,
+        "base_score": base_score
+    })
+
     first_candle = early_values[0]
     last_candle = early_values[-1]
 
