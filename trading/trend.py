@@ -418,6 +418,14 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
     def _clamp(x, lo, hi):
         return max(lo, min(x, hi))
 
+    def _reject(reason, extra=None):
+        ai_debug_log("trend_rejected", {
+            "symbol": symbol,
+            "reason": reason,
+            **(extra or {})
+        })
+        return 0.0
+
     try:
         alive_conf_raw = alive_chart_score(symbol)
         choppy_conf_raw = 1.0 - choppiness_score(symbol)
@@ -429,10 +437,10 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
         choppiness_score_conf = 0.75
 
     df = exchange.fetch_5m_ohlcv(symbol)
-    if (not isinstance(df, pd.DataFrame)):
-        return 0.0
+    if not isinstance(df, pd.DataFrame):
+        return _reject("ohlcv_not_dataframe")
     if df is None or df.empty or len(df) < lookback:
-        return 0.0
+        return _reject("ohlcv_insufficient", {"length": len(df) if df is not None else None})
 
     # --- Adaptive lookback based on volatility (ATR ratio)
     try:
@@ -459,7 +467,7 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
     if len(early_values) <= 9:
         log_returns = np.diff(np.log(early_values))
         slope_normalized = np.mean(log_returns)
-        return float(slope_normalized)
+        return _reject("early_values_too_short", {"slope": slope_normalized})
 
     # --- Calculate slopes on early values
     segment_slopes = []
@@ -491,7 +499,10 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
         (positive_count >= required_count and last_candle > first_candle)
         or (negative_count >= required_count and last_candle < first_candle)
     ):
-        return 0.0
+        return _reject("majority_rule_failed", {
+            "pos": positive_count,
+            "neg": negative_count
+        })
 
     debug(
         f"[DEBUG EASY TREND10] {symbol} | AvgSlope={slope_normalized:.6f}, "
