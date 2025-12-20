@@ -652,7 +652,9 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
             "rsi": rsi if 'rsi' in locals() else None,
             "rsi_conf": rsi_conf,
             "ema_conf": ema_conf,
-            "candle_conf": candle_conf,
+            "direction_conf": direction_conf,
+            "body_conf": body_conf,
+            "close_conf": close_conf,
             "alive_chart_score": alive_chart_score(symbol),
             "choppiness_score": choppiness_score(symbol)
         })
@@ -737,7 +739,9 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
             "rsi": rsi if 'rsi' in locals() else None,
             "rsi_conf": rsi_conf,
             "ema_conf": ema_conf,
-            "candle_conf": candle_conf,
+            "direction_conf": direction_conf,
+            "body_conf": body_conf,
+            "close_conf": close_conf,
             "alive_chart_score": alive_chart_score(symbol),
             "choppiness_score": choppiness_score(symbol)
         })
