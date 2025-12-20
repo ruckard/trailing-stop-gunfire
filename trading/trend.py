@@ -586,8 +586,6 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
             body_ratio = body / total_range
             close_position = (prev_close - prev_low) / total_range  # 0 = low, 1 = high
 
-            nice_bull = (prev_close > prev_open) and (body_ratio >= 0.6) and (close_position >= 0.75)
-
             # Candle quality confidence (bullish)
             direction_conf = 1.0 if prev_close > prev_open else 0.85
 
@@ -606,9 +604,6 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
 
             candle_conf = direction_conf * body_conf * close_conf
 
-            if not nice_bull:
-                debug(f"[{symbol}] Dismissed LONG: previous candle not strong bullish.")
-                return 0.0
         except Exception as e:
             debug(f"[WARN] Previous candle validation failed for {symbol}: {e}")
             return 0.0
@@ -676,8 +671,6 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
             body_ratio = body / total_range
             close_position = (prev_close - prev_low) / total_range  # 0 = low, 1 = high
 
-            nice_bear = (prev_close < prev_open) and (body_ratio >= 0.6) and (close_position <= 0.25)
-
             # Candle quality confidence (bearish)
             direction_conf = 1.0 if prev_close < prev_open else 0.85
 
@@ -696,9 +689,6 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
 
             candle_conf = direction_conf * body_conf * close_conf
 
-            if not nice_bear:
-                debug(f"[{symbol}] Dismissed SHORT: previous candle not strong bearish.")
-                return 0.0
         except Exception as e:
             debug(f"[WARN] Previous candle validation failed for {symbol}: {e}")
             return 0.0
