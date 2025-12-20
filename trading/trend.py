@@ -541,8 +541,10 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
     except Exception:
         pass
 
-    # Candle
-    candle_conf = 1.0
+    # Candle related confidence variables
+    direction_conf = 1.0
+    body_conf = 1.0
+    close_conf = 1.0
 
     # --- Trend persistence check (last 10 bars)
     recent_returns = np.diff(np.log(values[-10:]))
@@ -602,8 +604,6 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
                 1.15
             )
 
-            candle_conf = direction_conf * body_conf * close_conf
-
         except Exception as e:
             debug(f"[WARN] Previous candle validation failed for {symbol}: {e}")
             return 0.0
@@ -637,7 +637,9 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
             slope_normalized
             * rsi_conf
             * ema_conf
-            * candle_conf
+            * direction_conf
+            * body_conf
+            * close_conf
             * stop_conf
             * alive_chart_score_conf
             * choppiness_score_conf
@@ -687,8 +689,6 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
                 1.15
             )
 
-            candle_conf = direction_conf * body_conf * close_conf
-
         except Exception as e:
             debug(f"[WARN] Previous candle validation failed for {symbol}: {e}")
             return 0.0
@@ -722,7 +722,9 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
             slope_normalized
             * rsi_conf
             * ema_conf
-            * candle_conf
+            * direction_conf
+            * body_conf
+            * close_conf
             * stop_conf
             * alive_chart_score_conf
             * choppiness_score_conf
