@@ -205,6 +205,8 @@ def generate_signature(api_secret, url_path, nonce, body_str):
 state.positions = {}
 
 def start_new_cycle(resume=False):
+    filtered_symbols = None
+    low_volatility_symbols = []
     if resume:
         active_symbols = positionsdb.get_active_symbols()
         symbols = list(active_symbols.keys())
@@ -237,7 +239,6 @@ def start_new_cycle(resume=False):
         for symbol in base_symbols:
             positionsdb.clear_positions(symbol)
 
-        low_volatility_symbols = []
         for symbol in base_symbols:
             is_low_volatility, volatility_metric = is_low_volatility_symbol(symbol)
             if is_low_volatility:
