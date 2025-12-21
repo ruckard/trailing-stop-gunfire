@@ -748,8 +748,10 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
             "fib_no_breakout_conf": fib_no_breakout_conf,
             "fib_retrace_hold_conf": fib_retrace_hold_conf,
             "stop_conf": stop_conf,
-            "alive_chart_score": alive_chart_score(symbol),
-            "choppiness_score": choppiness_score(symbol)
+            "alive_chart_score": alive_conf_raw,
+            "choppiness_score": symbol_choppiness_score,
+            "raw_score": raw_score,
+            "final_score": final_score,
         })
 
         return {"score": float(final_score), "advice": advice_data, "raw_slope": base_score}
@@ -925,8 +927,10 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
             "fib_no_breakout_conf": fib_no_breakout_conf,
             "fib_retrace_hold_conf": fib_retrace_hold_conf,
             "stop_conf": stop_conf,
-            "alive_chart_score": alive_chart_score(symbol),
-            "choppiness_score": choppiness_score(symbol)
+            "alive_chart_score": alive_conf_raw,
+            "choppiness_score": symbol_choppiness_score,
+            "raw_score": raw_score,
+            "final_score": final_score,
         })
 
         return {"score": float(final_score), "advice": advice_data, "raw_slope": base_score}
