@@ -428,7 +428,8 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
 
     try:
         alive_conf_raw = alive_chart_score(symbol)
-        choppy_conf_raw = 1.0 - choppiness_score(symbol)
+        symbol_choppiness_score = choppiness_score(symbol)
+        choppy_conf_raw = 1.0 - symbol_choppiness_score
 
         alive_chart_score_conf = _clamp(0.5 + 0.5 * alive_conf_raw, 0.5, 1.0)
         choppiness_score_conf = _clamp(0.5 + 0.5 * choppy_conf_raw, 0.5, 1.0)
@@ -698,7 +699,8 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
         stop_distance_pct = abs(current_price - advice_data["stop_loss"]) / current_price
         stop_conf = _clamp(1.0 + (stop_distance_pct - 0.005) * 10.0, 0.85, 1.10)
 
-        final_score = (
+        # --- Base score without choppiness ---
+        raw_score = (
             slope_normalized
             * rsi_conf
             * ema_conf
@@ -712,8 +714,23 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
             * fib_retrace_hold_conf
             * stop_conf
             * alive_chart_score_conf
-            * choppiness_score_conf
         )
+
+        # --- Choppiness as a score ceiling (NOT a multiplier) ---
+        # symbol_choppiness_score → 0 = very choppy, 1 = very clean
+        try:
+            choppy_raw = 1.0 - symbol_choppiness_score
+        except Exception:
+            choppy_raw = 0.5  # neutral fallback
+
+        # Floor 0.6, cap at 1.0 → choppy markets cannot produce big scores
+        choppiness_cap = _clamp(0.6 + 0.6 * choppy_raw, 0.6, 1.0)
+
+        # Max allowed magnitude for final score
+        max_allowed_score = abs(raw_score) * choppiness_cap
+
+        # Apply ceiling while preserving direction
+        final_score = np.sign(raw_score) * min(abs(raw_score), max_allowed_score)
 
         ai_debug_log("trend_score", {
             "symbol": symbol,
@@ -859,7 +876,8 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
         stop_distance_pct = abs(current_price - advice_data["stop_loss"]) / current_price
         stop_conf = _clamp(1.0 + (stop_distance_pct - 0.005) * 10.0, 0.85, 1.10)
 
-        final_score = (
+        # --- Base score without choppiness ---
+        raw_score = (
             slope_normalized
             * rsi_conf
             * ema_conf
@@ -873,8 +891,23 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
             * fib_retrace_hold_conf
             * stop_conf
             * alive_chart_score_conf
-            * choppiness_score_conf
         )
+
+        # --- Choppiness as a score ceiling (NOT a multiplier) ---
+        # symbol_choppiness_score → 0 = very choppy, 1 = very clean
+        try:
+            choppy_raw = 1.0 - symbol_choppiness_score
+        except Exception:
+            choppy_raw = 0.5  # neutral fallback
+
+        # Floor 0.6, cap at 1.0 → choppy markets cannot produce big scores
+        choppiness_cap = _clamp(0.6 + 0.6 * choppy_raw, 0.6, 1.0)
+
+        # Max allowed magnitude for final score
+        max_allowed_score = abs(raw_score) * choppiness_cap
+
+        # Apply ceiling while preserving direction
+        final_score = np.sign(raw_score) * min(abs(raw_score), max_allowed_score)
 
         ai_debug_log("trend_score", {
             "symbol": symbol,
