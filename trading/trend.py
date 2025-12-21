@@ -608,23 +608,88 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
             debug(f"[WARN] Previous candle validation failed for {symbol}: {e}")
             return 0.0
 
+        # --- Fibonacci levels ---
         fib_073 = early_low + (early_high - early_low) * 0.73
         fib_0768 = early_low + (early_high - early_low) * 0.768
-        if not (fib_073 <= current_price <= fib_0768):
-            debug(f"[{symbol}] Dismissed LONG: current price not within 0.73–0.768 fibo range")
-            return 0.0
-        if (current_price < fib_retrace_long):
-            debug(f"[{symbol}] Dismissed LONG: fib_retrace_long would trigger stop loss immediately.")
-            return 0.0
-        if abs((fib_retrace_long - current_price) / current_price) < (MINIMUM_STOP_LOSS_PERCENT * 0.01):
-            debug(f"[{symbol}] Dismissed LONG: fib_retrace_long too close to current price (<0.3%)")
-            return 0.0
-        if np.max(late_values) > early_high * 1.005:  # allow 0.5% breakout
-            debug(f"[{symbol}] Discarded LONG: breakout above early high")
-            return 0.0
-        if np.min(late_values) < fib_retrace_long * 0.995:  # allow wiggle room
-            debug(f"[{symbol}] Discarded LONG: retraced below Fib tolerance")
-            return 0.0
+
+        # ============================================================
+        # 1️⃣ Price location inside fib zone (soft, not binary)
+        # ============================================================
+
+        if current_price < fib_073:
+            # Below zone → linearly penalize
+            dist = (fib_073 - current_price) / fib_073
+            fib_zone_conf = _clamp(1.0 - dist * 3.0, 0.0, 1.0)
+        elif current_price > fib_0768:
+            # Above zone → linearly penalize
+            dist = (current_price - fib_0768) / fib_0768
+            fib_zone_conf = _clamp(1.0 - dist * 3.0, 0.0, 1.0)
+        else:
+            fib_zone_conf = 1.0
+
+
+        # ============================================================
+        # 2️⃣ Stop-loss relative position (mandatory logic, softened)
+        # ============================================================
+
+        # Must stay above stop loss (still logically required)
+        if current_price <= fib_retrace_long:
+            fib_stop_side_conf = 0.0
+        else:
+            fib_stop_side_conf = 1.0
+
+        # Distance from stop loss:
+        # - too close  → bad (noise liquidation)
+        # - too far    → bad (poor R:R)
+        stop_dist_pct = abs((current_price - fib_retrace_long) / current_price)
+
+        min_stop = MINIMUM_STOP_LOSS_PERCENT * 0.01
+        ideal_stop = min_stop * 2.5
+        max_stop = min_stop * 6.0
+
+        if stop_dist_pct < min_stop:
+            # Too close
+            fib_stop_distance_conf = _clamp(stop_dist_pct / min_stop, 0.0, 1.0)
+        elif stop_dist_pct > max_stop:
+            # Too far
+            fib_stop_distance_conf = _clamp(1.0 - (stop_dist_pct - max_stop) / max_stop, 0.0, 1.0)
+        else:
+            # Sweet spot
+            fib_stop_distance_conf = 1.0
+
+
+        # ============================================================
+        # 3️⃣ No breakout above early high (softened)
+        # ============================================================
+
+        breakout_ratio = np.max(late_values) / early_high
+
+        if breakout_ratio <= 1.005:
+            fib_no_breakout_conf = 1.0
+        else:
+            # Penalize strength of breakout
+            fib_no_breakout_conf = _clamp(
+                1.0 - (breakout_ratio - 1.005) * 20.0,
+                0.0,
+                1.0
+            )
+
+
+        # ============================================================
+        # 4️⃣ No deep retrace below fib stop (softened)
+        # ============================================================
+
+        min_late = np.min(late_values)
+        retrace_ratio = min_late / fib_retrace_long
+
+        if retrace_ratio >= 0.995:
+            fib_retrace_hold_conf = 1.0
+        else:
+            fib_retrace_hold_conf = _clamp(
+                retrace_ratio / 0.995,
+                0.0,
+                1.0
+            )
 
         advice_data["trailing_trigger_price"] = long_trailing_trigger_price
         advice_data["stop_loss"] = fib_retrace_long
@@ -640,6 +705,11 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
             * direction_conf
             * body_conf
             * close_conf
+            * fib_zone_conf
+            * fib_stop_side_conf
+            * fib_stop_distance_conf
+            * fib_no_breakout_conf
+            * fib_retrace_hold_conf
             * stop_conf
             * alive_chart_score_conf
             * choppiness_score_conf
@@ -695,23 +765,86 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
             debug(f"[WARN] Previous candle validation failed for {symbol}: {e}")
             return 0.0
 
+        # --- Inverse Fibonacci levels ---
         fib_073 = early_high - (early_high - early_low) * 0.73
         fib_0768 = early_high - (early_high - early_low) * 0.768
-        if not (fib_0768 <= current_price <= fib_073):
-            debug(f"[{symbol}] Dismissed SHORT: current price not within 0.73–0.768 inverse fibo range")
-            return 0.0
-        if (current_price > fib_retrace_short):
-            debug(f"[{symbol}] Dismissed SHORT: fib_retrace_short would trigger stop loss immediately.")
-            return 0.0
-        if abs((fib_retrace_short - current_price) / current_price) < (MINIMUM_STOP_LOSS_PERCENT * 0.01):
-            debug(f"[{symbol}] Dismissed SHORT: fib_retrace_short too close to current price (<0.3%)")
-            return 0.0
-        if np.min(late_values) < early_low * 0.995:  # allow 0.5% breakout
-            debug(f"[{symbol}] Discarded SHORT: breakout below early low")
-            return 0.0
-        if np.max(late_values) > fib_retrace_short * 1.005:
-            debug(f"[{symbol}] Discarded SHORT: retraced above Fib tolerance")
-            return 0.0
+
+        # ============================================================
+        # 1️⃣ Price location inside inverse fib zone
+        # ============================================================
+
+        if current_price > fib_073:
+            # Above zone → penalize
+            dist = (current_price - fib_073) / fib_073
+            fib_zone_conf = _clamp(1.0 - dist * 3.0, 0.0, 1.0)
+        elif current_price < fib_0768:
+            # Below zone → penalize
+            dist = (fib_0768 - current_price) / fib_0768
+            fib_zone_conf = _clamp(1.0 - dist * 3.0, 0.0, 1.0)
+        else:
+            fib_zone_conf = 1.0
+
+
+        # ============================================================
+        # 2️⃣ Stop-loss relative position (mandatory, softened)
+        # ============================================================
+
+        # Must stay below stop loss
+        if current_price >= fib_retrace_short:
+            fib_stop_side_conf = 0.0
+        else:
+            fib_stop_side_conf = 1.0
+
+        # Distance from stop loss (too close / too far both bad)
+        stop_dist_pct = abs((fib_retrace_short - current_price) / current_price)
+
+        min_stop = MINIMUM_STOP_LOSS_PERCENT * 0.01
+        ideal_stop = min_stop * 2.5
+        max_stop = min_stop * 6.0
+
+        if stop_dist_pct < min_stop:
+            fib_stop_distance_conf = _clamp(stop_dist_pct / min_stop, 0.0, 1.0)
+        elif stop_dist_pct > max_stop:
+            fib_stop_distance_conf = _clamp(
+                1.0 - (stop_dist_pct - max_stop) / max_stop,
+                0.0,
+                1.0
+            )
+        else:
+            fib_stop_distance_conf = 1.0
+
+
+        # ============================================================
+        # 3️⃣ No breakout below early low
+        # ============================================================
+
+        breakout_ratio = early_low / np.min(late_values)
+
+        if breakout_ratio <= 1.005:
+            fib_no_breakout_conf = 1.0
+        else:
+            fib_no_breakout_conf = _clamp(
+                1.0 - (breakout_ratio - 1.005) * 20.0,
+                0.0,
+                1.0
+            )
+
+
+        # ============================================================
+        # 4️⃣ No deep retrace above fib stop
+        # ============================================================
+
+        max_late = np.max(late_values)
+        retrace_ratio = fib_retrace_short / max_late
+
+        if retrace_ratio >= 0.995:
+            fib_retrace_hold_conf = 1.0
+        else:
+            fib_retrace_hold_conf = _clamp(
+                retrace_ratio / 0.995,
+                0.0,
+                1.0
+            )
 
         advice_data["trailing_trigger_price"] = short_trailing_trigger_price
         advice_data["stop_loss"] = fib_retrace_short
@@ -727,6 +860,11 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
             * direction_conf
             * body_conf
             * close_conf
+            * fib_zone_conf
+            * fib_stop_side_conf
+            * fib_stop_distance_conf
+            * fib_no_breakout_conf
+            * fib_retrace_hold_conf
             * stop_conf
             * alive_chart_score_conf
             * choppiness_score_conf
