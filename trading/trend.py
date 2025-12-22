@@ -513,6 +513,9 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
         })
         return 0.0
 
+    if is_symbol_stagnant(symbol):
+        return _reject("symbol_is_stagnant")
+
     try:
         symbol_choppiness_score = choppiness_score(symbol)
         choppy_conf_raw = 1.0 - symbol_choppiness_score
