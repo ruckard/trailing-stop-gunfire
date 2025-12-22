@@ -304,6 +304,68 @@ def alive_chart_score(
 
     return alive_score
 
+def stagnation_score(symbol, lookback=60):
+    """
+    Simpler approach: What percentage of candles have 0 movement?
+    If > 80% of candles are 'dots', the symbol is dead.
+    """
+
+    # -----------------------------------------------------------------------
+    # FETCH 1-MINUTE DATA
+    # -----------------------------------------------------------------------
+    try:
+        df = exchange.fetch_1m_ohlcv(symbol)
+    except Exception:
+        ALIVE_CHART_CACHE[symbol]["stagnation_score"] = 0.0
+        ALIVE_CHART_CACHE[symbol]["last_refresh"] = now
+        return 0.0
+
+    if df is None or len(df) < lookback:
+        ALIVE_CHART_CACHE[symbol]["stagnation_score"] = 0.0
+        ALIVE_CHART_CACHE[symbol]["last_refresh"] = now
+        return 0.0
+
+    df = df.tail(lookback)
+    
+    # 1. Count candles where High == Low (literally a dot/flat line)
+    dots = (df['high'] == df['low']).sum()
+    
+    # 2. Count candles where price didn't change from the previous minute
+    no_change = (df['close'] == df['close'].shift(1)).sum()
+    
+    # Calculate ratio (0.0 to 1.0)
+    stagnation_ratio = (dots + no_change) / (2 * lookback)
+
+    return stagnation_ratio
+
+def is_symbol_stagnant(symbol, dot_threshold=0.0833):
+"""
+    Evaluates if a symbol's market activity has dropped to an untradeable level
+    (the "dot candle" phenomenon).
+
+    The default threshold of 0.0833 was empirically determined through a calibration
+    session using 'stagnation_annotator.py'. During this process, the resulting
+    CSV was sorted by score and cross-referenced with live order book depth and
+    visual chart data on the exchange.
+
+    A score of 0.0833 represents the critical inflection point where price quantization
+    and low liquidity begin to create 'flat' candles that significantly increase
+    the risk of slippage and failed execution.
+
+    Args:
+        symbol (str): The symbol to evaluate (e.g., "BTC-PERP").
+        dot_threshold (float): The stagnation ratio above which the symbol is
+                               considered dead. Defaults to 0.0833.
+
+    Returns:
+        bool: True if the symbol is stagnant/dead, False if it has sufficient liquidity.
+    """
+
+    stagnation_ratio = stagnation_score(symbol)
+    symbol_is_stagnant = (stagnation_ratio >= dot_threshold)
+
+    return symbol_is_stagnant
+
 def choppiness_score(
     symbol,
     lookback=60,
