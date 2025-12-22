@@ -14,6 +14,10 @@ ALIVE_CHART_CACHE = {}
 ALIVE_FORCE_REFRESH_HOURS = 1           # full recalc required after 1h
 ALIVE_MIN_SPACING_MINUTES = 10          # cannot refresh more frequently than this
 
+STAGNATION_CHART_CACHE = {}
+STAGNATION_FORCE_REFRESH_HOURS = 48           # full recalc required after 2 days
+STAGNATION_MIN_SPACING_MINUTES = 10          # cannot refresh more frequently than this
+
 CHOPPINESS_SCORE_CACHE = {}
 CHOPPY_FORCE_REFRESH_HOURS = 1
 CHOPPY_MIN_SPACING_MINUTES = 10
@@ -303,6 +307,89 @@ def alive_chart_score(
     ALIVE_CHART_CACHE[symbol]["last_refresh"] = now
 
     return alive_score
+
+def stagnation_score(symbol, lookback=60):
+
+    now = datetime.utcnow()
+
+    # -----------------------------------------------------------------------
+    # CACHE LOOKUP & REFRESH LOGIC
+    # -----------------------------------------------------------------------
+    cache = STAGNATION_CHART_CACHE.get(symbol)
+
+    if cache:
+        last_refresh = cache["last_refresh"]
+
+        force_refresh_due = (now - last_refresh) >= timedelta(hours=STAGNATION_FORCE_REFRESH_HOURS)
+        spacing_block = (now - last_refresh) < timedelta(minutes=STAGNATION_MIN_SPACING_MINUTES)
+
+        if not force_refresh_due and spacing_block:
+            return cache["stagnation_score"]
+    else:
+        STAGNATION_CHART_CACHE[symbol] = {
+            "stagnation_score": 0.0,
+            "last_refresh": datetime(2000, 1, 1),
+        }
+        cache = STAGNATION_CHART_CACHE[symbol]
+
+    # -----------------------------------------------------------------------
+    # FETCH 1-MINUTE DATA
+    # -----------------------------------------------------------------------
+    try:
+        df = exchange.fetch_1m_ohlcv(symbol)
+    except Exception:
+        STAGNATION_CHART_CACHE[symbol]["stagnation_score"] = 0.0
+        STAGNATION_CHART_CACHE[symbol]["last_refresh"] = now
+        return 0.0
+
+    if df is None or len(df) < lookback:
+        STAGNATION_CHART_CACHE[symbol]["stagnation_score"] = 0.0
+        STAGNATION_CHART_CACHE[symbol]["last_refresh"] = now
+        return 0.0
+
+    df = df.tail(lookback)
+    
+    # 1. Count candles where High == Low (literally a dot/flat line)
+    dots = (df['high'] == df['low']).sum()
+    
+    # 2. Count candles where price didn't change from the previous minute
+    no_change = (df['close'] == df['close'].shift(1)).sum()
+    
+    # Calculate ratio (0.0 to 1.0)
+    stagnation_ratio = (dots + no_change) / (2 * lookback)
+
+    STAGNATION_CHART_CACHE[symbol]["stagnation_score"] = stagnation_ratio
+    STAGNATION_CHART_CACHE[symbol]["last_refresh"] = now
+
+    return stagnation_ratio
+
+def is_symbol_stagnant(symbol, dot_threshold=0.0833):
+"""
+    Evaluates if a symbol's market activity has dropped to an untradeable level
+    (the "dot candle" phenomenon).
+
+    The default threshold of 0.0833 was empirically determined through a calibration
+    session using 'stagnation_annotator.py'. During this process, the resulting
+    CSV was sorted by score and cross-referenced with live order book depth and
+    visual chart data on the exchange.
+
+    A score of 0.0833 represents the critical inflection point where price quantization
+    and low liquidity begin to create 'flat' candles that significantly increase
+    the risk of slippage and failed execution.
+
+    Args:
+        symbol (str): The symbol to evaluate (e.g., "BTC-PERP").
+        dot_threshold (float): The stagnation ratio above which the symbol is
+                               considered dead. Defaults to 0.0833.
+
+    Returns:
+        bool: True if the symbol is stagnant/dead, False if it has sufficient liquidity.
+    """
+
+    stagnation_ratio = stagnation_score(symbol)
+    symbol_is_stagnant = (stagnation_ratio >= dot_threshold)
+
+    return symbol_is_stagnant
 
 def choppiness_score(
     symbol,
