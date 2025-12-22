@@ -427,14 +427,11 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
         return 0.0
 
     try:
-        alive_conf_raw = alive_chart_score(symbol)
         symbol_choppiness_score = choppiness_score(symbol)
         choppy_conf_raw = 1.0 - symbol_choppiness_score
 
-        alive_chart_score_conf = _clamp(0.5 + 0.5 * alive_conf_raw, 0.5, 1.0)
         choppiness_score_conf = _clamp(0.5 + 0.5 * choppy_conf_raw, 0.5, 1.0)
     except Exception:
-        alive_chart_score_conf = 0.75
         choppiness_score_conf = 0.75
 
     df = exchange.fetch_5m_ohlcv(symbol)
@@ -713,7 +710,6 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
             * fib_no_breakout_conf
             * fib_retrace_hold_conf
             * stop_conf
-            * alive_chart_score_conf
         )
 
         # --- Choppiness as a score ceiling (NOT a multiplier) ---
@@ -892,7 +888,6 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
             * fib_no_breakout_conf
             * fib_retrace_hold_conf
             * stop_conf
-            * alive_chart_score_conf
         )
 
         # --- Choppiness as a score ceiling (NOT a multiplier) ---
