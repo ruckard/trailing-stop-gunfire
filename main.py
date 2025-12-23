@@ -158,19 +158,6 @@ state.TRENDRANGE_CACHE_TIMEOUT = 5 * 60  # 5 minutes
 MAXIMUM_LONG_TRADES_NUMBER = safe_override_import_or_default("override_config", "MAXIMUM_LONG_TRADES_NUMBER", DEFAULT_MAXIMUM_LONG_TRADES_NUMBER)
 MAXIMUM_SHORT_TRADES_NUMBER = safe_override_import_or_default("override_config", "MAXIMUM_SHORT_TRADES_NUMBER", DEFAULT_MAXIMUM_SHORT_TRADES_NUMBER)
 
-MARKET_SUMMARY_CACHE = {
-    "data": None,
-    "timestamp": None,
-}
-MARKET_SUMMARY_CACHE_TIMEOUT = timedelta(hours=1)
-
-def prune_market_summary_cache():
-    if MARKET_SUMMARY_CACHE["timestamp"] is None:
-        return
-    if datetime.utcnow() - MARKET_SUMMARY_CACHE["timestamp"] >= MARKET_SUMMARY_CACHE_TIMEOUT:
-        MARKET_SUMMARY_CACHE["data"] = None
-        MARKET_SUMMARY_CACHE["timestamp"] = None
-
 def get_final_symbol_list():
     top_symbols = exchange.fetch_top_symbols_by_volume(limit=TOP_SYMBOLS_BY_VOLUME)
 
