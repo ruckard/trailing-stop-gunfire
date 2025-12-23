@@ -7,6 +7,8 @@ import db.positions as positionsdb
 from trading.common import get_dynamic_trade_max_candles
 import pandas as pd
 from datetime import datetime, timedelta
+import hashlib
+import json
 
 TRENDRANGE_CACHE = {}
 
@@ -21,6 +23,9 @@ STAGNATION_MIN_SPACING_MINUTES = 10          # cannot refresh more frequently th
 CHOPPINESS_SCORE_CACHE = {}
 CHOPPY_FORCE_REFRESH_HOURS = 1
 CHOPPY_MIN_SPACING_MINUTES = 10
+
+TREND_10_CACHE = {}
+TREND_10_CACHE_TIMEOUT = timedelta(minutes=1)
 
 def place_trend_positions(symbol, sides):
     # TODO: Maybe improve it so that we don't have a lazy import
@@ -487,7 +492,7 @@ def classify_trend_or_range(symbol, lookback=50, threshold=0.0003):
     TRENDRANGE_CACHE[symbol] = (now, result)
     return result
 
-def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
+def calculate_easy_trend10_with_rsi_real(symbol, lookback=50, rsi_period=14,
                                    rsi_low_cutoff=30, rsi_high_cutoff=70,
                                    window_size=5):
     """
@@ -1019,6 +1024,65 @@ def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
         return {"score": float(final_score), "advice": advice_data, "raw_slope": base_score}
 
     return float(slope_normalized)
+
+def prune_trend_10_cache():
+    """Removes expired entries from the nested cache structure."""
+    now = datetime.utcnow()
+    for symbol in list(TREND_10_CACHE.keys()):
+        # Check each parameter-hash entry for this symbol
+        for param_hash in list(TREND_10_CACHE[symbol].keys()):
+            _, ts = TREND_10_CACHE[symbol][param_hash]
+            if now - ts >= TREND_10_CACHE_TIMEOUT:
+                del TREND_10_CACHE[symbol][param_hash]
+
+        # If symbol has no more cached parameter sets, remove the symbol key
+        if not TREND_10_CACHE[symbol]:
+            del TREND_10_CACHE[symbol]
+
+def calculate_easy_trend10_with_rsi(symbol, lookback=50, rsi_period=14,
+                                    rsi_low_cutoff=30, rsi_high_cutoff=70,
+                                    window_size=5):
+    """
+    Cached wrapper for calculate_easy_trend10_with_rsi_real.
+    Uses a hash of parameters (excluding symbol) as a sub-key.
+    """
+    # 1. Maintenance
+    prune_trend_10_cache()
+
+    # 2. Generate a unique hash for the parameters (excluding 'symbol')
+    params = {
+        "lookback": lookback,
+        "rsi_period": rsi_period,
+        "rsi_low_cutoff": rsi_low_cutoff,
+        "rsi_high_cutoff": rsi_high_cutoff,
+        "window_size": window_size
+    }
+    # Sort keys to ensure the hash is consistent
+    param_string = json.dumps(params, sort_keys=True)
+    param_hash = hashlib.md5(param_string.encode()).hexdigest()
+
+    # 3. Check Cache (Symbol -> Param Hash)
+    if symbol in TREND_10_CACHE:
+        if param_hash in TREND_10_CACHE[symbol]:
+            return TREND_10_CACHE[symbol][param_hash][0]
+
+    # 4. Cache Miss: Call the "real" function (the renamed original)
+    result = calculate_easy_trend10_with_rsi_real(
+        symbol=symbol,
+        lookback=lookback,
+        rsi_period=rsi_period,
+        rsi_low_cutoff=rsi_low_cutoff,
+        rsi_high_cutoff=rsi_high_cutoff,
+        window_size=window_size
+    )
+
+    # 5. Store in Cache
+    if symbol not in TREND_10_CACHE:
+        TREND_10_CACHE[symbol] = {}
+
+    TREND_10_CACHE[symbol][param_hash] = (result, datetime.utcnow())
+
+    return result
 
 def calculate_easy_trend9_with_rsi(symbol, lookback=50, rsi_period=14,
                                    rsi_low_cutoff=30, rsi_high_cutoff=70,
