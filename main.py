@@ -163,6 +163,7 @@ BASE_SYMBOLS_CACHE = {
     "timestamp": None,
 }
 BASE_SYMBOLS_CACHE_TIMEOUT = timedelta(hours=48)
+LOW_VOLATILITY_SYMBOLS_CACHE_TIMEOUT = timedelta(hours=48)
 
 def get_final_symbol_list():
     top_symbols = exchange.fetch_top_symbols_by_volume(limit=TOP_SYMBOLS_BY_VOLUME)
@@ -232,6 +233,31 @@ def get_base_symbols():
 
         return base_symbols
 
+def prune_low_volatility_symbols_cache():
+    if LOW_VOLATILITY_SYMBOLS_CACHE["timestamp"] is None:
+        return
+    if datetime.utcnow() - LOW_VOLATILITY_SYMBOLS_CACHE["timestamp"] >= LOW_VOLATILITY_SYMBOLS_CACHE_TIMEOUT:
+        LOW_VOLATILITY_SYMBOLS_CACHE["data"] = None
+        LOW_VOLATILITY_SYMBOLS_CACHE["timestamp"] = None
+
+def get_low_volatility_symbols(base_symbols):
+        prune_low_volatility_symbols_cache()
+        if LOW_VOLATILITY_SYMBOLS_CACHE["data"] is not None:
+            return LOW_VOLATILITY_SYMBOLS_CACHE["data"]
+
+        low_volatility_symbols = []
+
+        for symbol in base_symbols:
+            is_low_volatility, volatility_metric = is_low_volatility_symbol(symbol)
+            if is_low_volatility:
+                low_volatility_symbols.append(symbol)
+
+        # Cache fresh data with current timestamp
+        LOW_VOLATILITY_SYMBOLS_CACHE["data"] = low_volatility_symbols
+        LOW_VOLATILITY_SYMBOLS_CACHE["timestamp"] = datetime.utcnow()
+
+        return low_volatility_symbols
+
 def start_new_cycle(resume=False):
     filtered_symbols = None
     low_volatility_symbols = []
@@ -255,10 +281,7 @@ def start_new_cycle(resume=False):
         for symbol in base_symbols:
             positionsdb.clear_positions(symbol)
 
-        for symbol in base_symbols:
-            is_low_volatility, volatility_metric = is_low_volatility_symbol(symbol)
-            if is_low_volatility:
-                low_volatility_symbols.append(symbol)
+        low_volatility_symbols = get_low_volatility_symbols(base_symbols)
 
         symbols, long_symbols, short_symbols = filter_symbols_by_rank(
             low_volatility_symbols,
