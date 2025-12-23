@@ -158,6 +158,12 @@ state.TRENDRANGE_CACHE_TIMEOUT = 5 * 60  # 5 minutes
 MAXIMUM_LONG_TRADES_NUMBER = safe_override_import_or_default("override_config", "MAXIMUM_LONG_TRADES_NUMBER", DEFAULT_MAXIMUM_LONG_TRADES_NUMBER)
 MAXIMUM_SHORT_TRADES_NUMBER = safe_override_import_or_default("override_config", "MAXIMUM_SHORT_TRADES_NUMBER", DEFAULT_MAXIMUM_SHORT_TRADES_NUMBER)
 
+BASE_SYMBOLS_CACHE = {
+    "data": None,
+    "timestamp": None,
+}
+BASE_SYMBOLS_CACHE_TIMEOUT = timedelta(hours=48)
+
 def get_final_symbol_list():
     top_symbols = exchange.fetch_top_symbols_by_volume(limit=TOP_SYMBOLS_BY_VOLUME)
 
@@ -191,21 +197,17 @@ def generate_signature(api_secret, url_path, nonce, body_str):
 # === Store Positions ===
 state.positions = {}
 
-def start_new_cycle(resume=False):
-    filtered_symbols = None
-    low_volatility_symbols = []
-    if resume:
-        active_symbols = positionsdb.get_active_symbols()
-        symbols = list(active_symbols.keys())
-        long_symbols = [s for s, sides in active_symbols.items() if "LONG" in sides]
-        short_symbols = [s for s, sides in active_symbols.items() if "SHORT" in sides]
-        print_with_date(f"[RESUME] Resuming cycle with LONG symbols: {long_symbols}")
-        print_with_date(f"[RESUME] Resuming cycle with SHORT symbols: {short_symbols}")
-    else:
-        # 1️⃣ Init DB
-        if (not state.knownsymbolsdb_was_init):
-            knownsymbolsdb.init()
-            state.knownsymbolsdb_was_init = True
+def prune_base_symbols_cache():
+    if BASE_SYMBOLS_CACHE["timestamp"] is None:
+        return
+    if datetime.utcnow() - BASE_SYMBOLS_CACHE["timestamp"] >= BASE_SYMBOLS_CACHE_TIMEOUT:
+        BASE_SYMBOLS_CACHE["data"] = None
+        BASE_SYMBOLS_CACHE["timestamp"] = None
+
+def get_base_symbols():
+        prune_base_symbols_cache()
+        if BASE_SYMBOLS_CACHE["data"] is not None:
+            return BASE_SYMBOLS_CACHE["data"]
 
         # 2️⃣ Fetch market summary from BTSE
         market_summary = exchange.get_market_summary()
@@ -223,6 +225,31 @@ def start_new_cycle(resume=False):
 
         # 6️⃣ Get only 'ready' symbols for trading
         base_symbols = knownsymbolsdb.get_ready_symbols()
+
+        # Cache fresh data with current timestamp
+        BASE_SYMBOLS_CACHE["data"] = base_symbols
+        BASE_SYMBOLS_CACHE["timestamp"] = datetime.utcnow()
+
+        return base_symbols
+
+def start_new_cycle(resume=False):
+    filtered_symbols = None
+    low_volatility_symbols = []
+    if resume:
+        active_symbols = positionsdb.get_active_symbols()
+        symbols = list(active_symbols.keys())
+        long_symbols = [s for s, sides in active_symbols.items() if "LONG" in sides]
+        short_symbols = [s for s, sides in active_symbols.items() if "SHORT" in sides]
+        print_with_date(f"[RESUME] Resuming cycle with LONG symbols: {long_symbols}")
+        print_with_date(f"[RESUME] Resuming cycle with SHORT symbols: {short_symbols}")
+    else:
+        # 1️⃣ Init DB
+        if (not state.knownsymbolsdb_was_init):
+            knownsymbolsdb.init()
+            state.knownsymbolsdb_was_init = True
+
+        base_symbols = get_base_symbols()
+
         # Forget about old trades if we are starting a new cycle
         state.positions = {}
         for symbol in base_symbols:
