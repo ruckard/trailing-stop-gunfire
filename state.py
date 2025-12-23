@@ -43,3 +43,5 @@ TRAILING_LENGTHS = None
 MINIMUM_TRAILING_LENGTHS = None
 TREND_SCORES_TMP = None
 fib_level = None
+
+knownsymbolsdb_was_init = False

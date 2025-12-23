@@ -216,7 +216,9 @@ def start_new_cycle(resume=False):
         print_with_date(f"[RESUME] Resuming cycle with SHORT symbols: {short_symbols}")
     else:
         # 1️⃣ Init DB
-        knownsymbolsdb.init()
+        if (not state.knownsymbolsdb_was_init):
+            knownsymbolsdb.init()
+            state.knownsymbolsdb_was_init = True
 
         # 2️⃣ Fetch market summary from BTSE
         market_summary = exchange.get_market_summary()
