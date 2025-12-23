@@ -168,6 +168,9 @@ LOW_VOLATILITY_SYMBOLS_CACHE_TIMEOUT = timedelta(hours=48)
 CONTRACT_SIZE_CACHE = {}
 CONTRACT_SIZE_CACHE_TIMEOUT = timedelta(hours=48)
 
+MIN_PRICE_CACHE = {}
+MIN_PRICE_CACHE_TIMEOUT = timedelta(hours=48)
+
 def get_final_symbol_list():
     top_symbols = exchange.fetch_top_symbols_by_volume(limit=TOP_SYMBOLS_BY_VOLUME)
 
@@ -295,6 +298,39 @@ def fetch_contract_size_cached(symbol):
 
     return contract_size
 
+def prune_min_price_cache():
+    """Removes expired entries from the cache."""
+    now = datetime.utcnow()
+    expired = [sym for sym, (_, ts) in MIN_PRICE_CACHE.items()
+               if now - ts >= MIN_PRICE_CACHE_TIMEOUT]
+    for sym in expired:
+        del MIN_PRICE_CACHE[sym]
+
+def fetch_min_price_increment_cached(symbol):
+    """
+    Cached wrapper that fetches min price increment for a single symbol.
+    Wraps the original fetch_min_price_increments which expects a list.
+    """
+    # 1. Maintenance: Remove expired entries
+    prune_min_price_cache()
+
+    # 2. Cache Hit: Return immediately if valid
+    if symbol in MIN_PRICE_CACHE:
+        return MIN_PRICE_CACHE[symbol][0]
+
+    # 3. Cache Miss: Fetch fresh data
+    # We wrap 'symbol' in a list because the original function expects a list
+    result_dict = fetch_min_price_increments([symbol])
+
+    # Extract the specific value for this symbol
+    min_increment = result_dict.get(symbol)
+
+    # 4. Update Cache (only if we got a valid result)
+    if min_increment is not None:
+        MIN_PRICE_CACHE[symbol] = (min_increment, datetime.utcnow())
+
+    return min_increment
+
 def start_new_cycle(resume=False):
     filtered_symbols = None
     low_volatility_symbols = []
@@ -347,7 +383,13 @@ def start_new_cycle(resume=False):
         if size:
             state.CONTRACT_SIZES[symbol] = size
 
-    state.MIN_PRICE_INCREMENTS = api_cache_fetch("fetch_min_price_increments", symbols)
+    # Update min price increments
+    state.MIN_PRICE_INCREMENTS = {}
+    for symbol in symbols:
+        increment = fetch_min_price_increment_cached(symbol)
+        if increment:
+            state.MIN_PRICE_INCREMENTS[symbol] = increment
+
     state.CONTRACTS_MAP, MAX_EXPECTED_LOSS = compute_contracts_from_prices(symbols, state.CONTRACT_SIZES)
 
     print_with_date(f"[CONTRACT_SIZES] {state.CONTRACT_SIZES}")
