@@ -170,6 +170,9 @@ LOW_VOLATILITY_SYMBOLS_CACHE = {
 }
 LOW_VOLATILITY_SYMBOLS_CACHE_TIMEOUT = timedelta(hours=48)
 
+CONTRACT_SIZE_CACHE = {}
+CONTRACT_SIZE_CACHE_TIMEOUT = timedelta(hours=48)
+
 def get_final_symbol_list():
     top_symbols = exchange.fetch_top_symbols_by_volume(limit=TOP_SYMBOLS_BY_VOLUME)
 
@@ -263,6 +266,40 @@ def get_low_volatility_symbols(base_symbols):
 
         return low_volatility_symbols
 
+def prune_contract_size_cache():
+    """Removes expired entries from the cache."""
+    now = datetime.utcnow()
+    # Identify expired keys
+    expired = [sym for sym, (_, ts) in CONTRACT_SIZE_CACHE.items()
+               if now - ts >= CONTRACT_SIZE_CACHE_TIMEOUT]
+    for sym in expired:
+        del CONTRACT_SIZE_CACHE[sym]
+
+def fetch_contract_size_cached(symbol):
+    """
+    Cached wrapper that fetches contract size for a single symbol.
+    Wraps the original fetch_contract_sizes which expects a list.
+    """
+    # 1. Maintenance: Remove expired entries
+    prune_contract_size_cache()
+
+    # 2. Cache Hit: Return immediately if valid
+    if symbol in CONTRACT_SIZE_CACHE:
+        return CONTRACT_SIZE_CACHE[symbol][0]
+
+    # 3. Cache Miss: Fetch fresh data
+    # We wrap 'symbol' in a list because the original function expects a list
+    result_dict = api_cache_fetch("fetch_contract_sizes", [symbol])
+
+    # Extract the specific value for this symbol
+    contract_size = result_dict.get(symbol)
+
+    # 4. Update Cache (only if we got a valid result)
+    if contract_size is not None:
+        CONTRACT_SIZE_CACHE[symbol] = (contract_size, datetime.utcnow())
+
+    return contract_size
+
 def start_new_cycle(resume=False):
     filtered_symbols = None
     low_volatility_symbols = []
@@ -308,7 +345,13 @@ def start_new_cycle(resume=False):
             })
             return None, None, None
 
-    state.CONTRACT_SIZES = api_cache_fetch("fetch_contract_sizes", symbols)
+    # Update contract sizes
+    state.CONTRACT_SIZES = {}
+    for symbol in symbols:
+        size = fetch_contract_size_cached(symbol)
+        if size:
+            state.CONTRACT_SIZES[symbol] = size
+
     state.MIN_PRICE_INCREMENTS = api_cache_fetch("fetch_min_price_increments", symbols)
     state.CONTRACTS_MAP, MAX_EXPECTED_LOSS = compute_contracts_from_prices(symbols, state.CONTRACT_SIZES)
 
