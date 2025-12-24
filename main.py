@@ -339,6 +339,7 @@ def fetch_min_price_increment_cached(symbol):
     return min_increment
 
 def start_new_cycle(resume=False):
+    global VERY_FIRST_TRADE
     filtered_symbols = None
     low_volatility_symbols = []
     if resume:
@@ -397,7 +398,7 @@ def start_new_cycle(resume=False):
         if increment:
             state.MIN_PRICE_INCREMENTS[symbol] = increment
 
-    if (VERY_FIRST_TRADE):
+    if ((not resume) and VERY_FIRST_TRADE):
         print_with_date("The very first trade was skipped so that cache is in place.")
         VERY_FIRST_TRADE = False
         return None, None, None
