@@ -176,7 +176,7 @@ CONTRACT_SIZE_CACHE_TIMEOUT = timedelta(hours=48)
 MIN_PRICE_CACHE = {}
 MIN_PRICE_CACHE_TIMEOUT = timedelta(hours=48)
 
-VERY_FIRST_TRADE = True
+VERY_FIRST_CACHE = True
 
 def get_final_symbol_list():
     top_symbols = exchange.fetch_top_symbols_by_volume(limit=TOP_SYMBOLS_BY_VOLUME)
@@ -341,8 +341,20 @@ def fetch_min_price_increment_cached(symbol):
 
     return min_increment
 
+def update_contract_sizes(symbols):
+    for symbol in symbols:
+        size = fetch_contract_size_cached(symbol)
+        if size:
+            state.CONTRACT_SIZES[symbol] = size
+
+def update_min_price_increments(symbols):
+    for symbol in symbols:
+        increment = fetch_min_price_increment_cached(symbol)
+        if increment:
+            state.MIN_PRICE_INCREMENTS[symbol] = increment
+
 def start_new_cycle(resume=False):
-    global VERY_FIRST_TRADE
+    global VERY_FIRST_CACHE
     low_volatility_symbols = []
     if resume:
         active_symbols = positionsdb.get_active_symbols()
@@ -351,6 +363,8 @@ def start_new_cycle(resume=False):
         short_symbols = [s for s, sides in active_symbols.items() if "SHORT" in sides]
         print_with_date(f"[RESUME] Resuming cycle with LONG symbols: {long_symbols}")
         print_with_date(f"[RESUME] Resuming cycle with SHORT symbols: {short_symbols}")
+        update_contract_sizes(symbols)
+        update_min_price_increments(symbols)
     else:
         # 1️⃣ Init DB
         if (not state.knownsymbolsdb_was_init):
@@ -365,6 +379,13 @@ def start_new_cycle(resume=False):
             positionsdb.clear_positions(symbol)
 
         low_volatility_symbols = get_low_volatility_symbols(base_symbols)
+        update_contract_sizes(low_volatility_symbols)
+        update_min_price_increments(low_volatility_symbols)
+
+        if VERY_FIRST_CACHE:
+            print_with_date("The very first attempt to trade was skipped so that cache is in place.")
+            VERY_FIRST_CACHE = False
+            return None, None, None
 
         symbols, long_symbols, short_symbols = filter_symbols_by_rank(
             low_volatility_symbols,
@@ -384,25 +405,6 @@ def start_new_cycle(resume=False):
                 "short_symbols": short_symbols
             })
             return None, None, None
-
-    # Update contract sizes
-    state.CONTRACT_SIZES = {}
-    for symbol in symbols:
-        size = fetch_contract_size_cached(symbol)
-        if size:
-            state.CONTRACT_SIZES[symbol] = size
-
-    # Update min price increments
-    state.MIN_PRICE_INCREMENTS = {}
-    for symbol in symbols:
-        increment = fetch_min_price_increment_cached(symbol)
-        if increment:
-            state.MIN_PRICE_INCREMENTS[symbol] = increment
-
-    if ((not resume) and VERY_FIRST_TRADE):
-        print_with_date("The very first trade was skipped so that cache is in place.")
-        VERY_FIRST_TRADE = False
-        return None, None, None
 
     state.CONTRACTS_MAP, MAX_EXPECTED_LOSS = compute_contracts_from_prices(symbols, state.CONTRACT_SIZES)
 
