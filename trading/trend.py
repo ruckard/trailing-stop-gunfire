@@ -539,17 +539,19 @@ def calculate_easy_trend10_with_rsi_real(symbol, lookback=50, rsi_period=14,
     if df is None or df.empty or len(df) < lookback:
         return _reject("ohlcv_insufficient", {"length": len(df) if df is not None else None})
 
+    # Current price
+    current_price = exchange.retry_until_valid(exchange.get_current_price, symbol, wait_seconds=10, max_retries=5)
+    if current_price is None:
+        print_with_date(f"[WARN] Skipping {symbol} due to None price after max retries.")
+        return _reject("No current price could be detected")
     # --- Adaptive lookback based on volatility (ATR ratio)
     try:
         atr = ta.ATR(df['high'], df['low'], df['close'], timeperiod=14).iloc[-1]
-        avg_price = df['close'].iloc[-1]
-        current_price = avg_price
-        vol_ratio = atr / avg_price if avg_price != 0 else 0
+        vol_ratio = atr / current_price if current_price != 0 else 0
         lookback = int(max(50, min(150, 100 * vol_ratio)))  # 50–150 range
     except Exception as e:
         debug(f"[WARN] ATR or lookback calculation failed for {symbol}: {e}")
         atr = 0.0
-        current_price = df['close'].iloc[-1] if not df.empty else 0.0
         pass
 
     # --- Use ohlc4 values
