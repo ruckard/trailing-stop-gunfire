@@ -176,6 +176,8 @@ CONTRACT_SIZE_CACHE_TIMEOUT = timedelta(hours=48)
 MIN_PRICE_CACHE = {}
 MIN_PRICE_CACHE_TIMEOUT = timedelta(hours=48)
 
+VERY_FIRST_TRADE = True
+
 def get_final_symbol_list():
     top_symbols = exchange.fetch_top_symbols_by_volume(limit=TOP_SYMBOLS_BY_VOLUME)
 
@@ -394,6 +396,11 @@ def start_new_cycle(resume=False):
         increment = fetch_min_price_increment_cached(symbol)
         if increment:
             state.MIN_PRICE_INCREMENTS[symbol] = increment
+
+    if (VERY_FIRST_TRADE):
+        print_with_date("The very first trade was skipped so that cache is in place.")
+        VERY_FIRST_TRADE = False
+        return None, None, None
 
     state.CONTRACTS_MAP, MAX_EXPECTED_LOSS = compute_contracts_from_prices(symbols, state.CONTRACT_SIZES)
 
