@@ -343,7 +343,6 @@ def fetch_min_price_increment_cached(symbol):
 
 def start_new_cycle(resume=False):
     global VERY_FIRST_TRADE
-    filtered_symbols = None
     low_volatility_symbols = []
     if resume:
         active_symbols = positionsdb.get_active_symbols()
@@ -380,7 +379,6 @@ def start_new_cycle(resume=False):
         if symbols is None or long_symbols is None or short_symbols is None:
             print_with_date("[CYCLE] No valid symbols found. Skipping cycle.")
             ai_debug_log("symbol_filter", {
-                "filtered_symbols": filtered_symbols,
                 "low_volatility_symbols": low_volatility_symbols,
                 "long_symbols": long_symbols,
                 "short_symbols": short_symbols
@@ -433,7 +431,6 @@ def start_new_cycle(resume=False):
             show_positions(symbol)
 
     ai_debug_log("symbol_filter", {
-        "filtered_symbols": filtered_symbols,
         "low_volatility_symbols": low_volatility_symbols,
         "long_symbols": long_symbols,
         "short_symbols": short_symbols
