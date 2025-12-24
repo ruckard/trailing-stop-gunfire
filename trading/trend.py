@@ -507,6 +507,10 @@ def calculate_easy_trend10_with_rsi_real(symbol, lookback=50, rsi_period=14,
     - Adds EMA confirmation and trend persistence boost.
     - Returns {'score': float, 'stop_loss': float} or 0.0
     """
+
+    # Hard-coded minimum stop loss requirement
+    MANDATORY_MIN_SL_PCT = 0.01  # 1.00%
+
     def _clamp(x, lo, hi):
         return max(lo, min(x, hi))
 
@@ -668,6 +672,10 @@ def calculate_easy_trend10_with_rsi_real(symbol, lookback=50, rsi_period=14,
     MINIMUM_STOP_LOSS_PERCENT=0.30
     # --- Relaxed breakout / retrace conditions
     if slope_normalized > 0:
+        # Long Stop Loss Check
+        sl_dist = (current_price - fib_retrace_long) / current_price
+        if sl_dist < MANDATORY_MIN_SL_PCT:
+            return _reject("stop_loss_too_tight_long", {"dist": sl_dist})
 
         # --- Previous candle confirmation (bullish)
         try:
@@ -847,6 +855,10 @@ def calculate_easy_trend10_with_rsi_real(symbol, lookback=50, rsi_period=14,
         return {"score": float(final_score), "advice": advice_data, "raw_slope": base_score}
 
     elif slope_normalized < 0:
+        # Short Stop Loss Check
+        sl_dist = (fib_retrace_short - current_price) / current_price
+        if sl_dist < MANDATORY_MIN_SL_PCT:
+            return _reject("stop_loss_too_tight_short", {"dist": sl_dist})
 
         # --- Previous candle confirmation (bearish)
         try:
