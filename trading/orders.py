@@ -64,6 +64,9 @@ def update_trailing_stops_for_symbol(symbol):
 # === Place Trailing Stop Order on BTSE ===
 def place_trailing_stop(symbol, position_side, callback_rate, contracts):
     try:
+
+        limit_entry_price = state.TREND_CURRENT_PRICE.get(symbol)
+
         current_price = exchange.get_current_price(symbol)
         if not current_price:
             print_with_date("[ERROR] Failed to get current price.")

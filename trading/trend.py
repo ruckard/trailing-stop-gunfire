@@ -797,6 +797,7 @@ def calculate_easy_trend10_with_rsi_real(symbol, lookback=50, rsi_period=14,
         advice_data["trailing_trigger_price"] = long_trailing_trigger_price
         advice_data["stop_loss"] = fib_retrace_long
         advice_data["take_profit"] = early_low + (early_high - early_low) * 0.893
+        advice_data["current_price"] = current_price
 
         stop_distance_pct = abs(current_price - advice_data["stop_loss"]) / current_price
         stop_conf = _clamp(1.0 + (stop_distance_pct - 0.005) * 10.0, 0.85, 1.10)
@@ -978,6 +979,7 @@ def calculate_easy_trend10_with_rsi_real(symbol, lookback=50, rsi_period=14,
         advice_data["trailing_trigger_price"] = short_trailing_trigger_price
         advice_data["stop_loss"] = fib_retrace_short
         advice_data["take_profit"] = early_high - (early_high - early_low) * 0.893
+        advice_data["current_price"] = current_price
 
         stop_distance_pct = abs(current_price - advice_data["stop_loss"]) / current_price
         stop_conf = _clamp(1.0 + (stop_distance_pct - 0.005) * 10.0, 0.85, 1.10)
