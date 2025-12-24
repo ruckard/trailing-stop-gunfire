@@ -55,29 +55,37 @@ def save_pending_order(symbol, order_id, info):
     conn.commit()
     conn.close()
 
-def load_pending_orders():
-    """Loads all pending orders from DB into the global state."""
+def load_pending_orders(symbol=None):
+    """
+    Loads pending limit orders into state.pending_orders.
+    If symbol is provided, only loads for that symbol.
+    """
     conn = sqlite3.connect(state.DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT order_id, symbol, side, callback, contracts, limit_price, timestamp, pid FROM pending_orders")
+
+    if symbol:
+        query = "SELECT order_id, symbol, side, callback, contracts, limit_price, timestamp, pid FROM pending_orders WHERE symbol = ?"
+        c.execute(query, (symbol,))
+    else:
+        query = "SELECT order_id, symbol, side, callback, contracts, limit_price, timestamp, pid FROM pending_orders"
+        c.execute(query)
+
     rows = c.fetchall()
     conn.close()
 
-    # Ensure the state dict is initialized
-    if not hasattr(state, 'pending_orders'):
-        state.pending_orders = {}
+    for order_id, sym, side, callback, contracts, limit_price, timestamp, pid in rows:
+        # Ensure state structure exists for this symbol
+        if sym not in state.pending_orders:
+            state.pending_orders[sym] = {}
 
-    for order_id, symbol, side, callback, contracts, limit_price, timestamp, pid in rows:
-        if symbol not in state.pending_orders:
-            state.pending_orders[symbol] = {}
-        
-        state.pending_orders[symbol][order_id] = {
+        state.pending_orders[sym][order_id] = {
             "side": side,
             "callback": callback,
             "contracts": contracts,
             "limit_price": limit_price,
             "timestamp": timestamp,
-            "pid": pid
+            "pid": pid,
+            "status": "OPEN" # Helper status for your logic
         }
 
 def delete_pending_order(order_id):
@@ -96,3 +104,10 @@ def get_all_pending_by_symbol(symbol):
     rows = c.fetchall()
     conn.close()
     return [row[0] for row in rows]
+
+def clear_pending_orders(symbol):
+    conn = sqlite3.connect(state.DB_PATH)
+    c = conn.cursor()
+    c.execute(f"DELETE FROM pending_orders WHERE symbol = \"{symbol}\"")
+    conn.commit()
+    conn.close()

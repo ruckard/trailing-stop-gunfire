@@ -16,6 +16,7 @@ from contextlib import contextmanager
 
 import state
 import db.positions as positionsdb
+import db.orders as ordersdb
 import db.knownsymbols as knownsymbolsdb
 
 from exchange import btse as exchange
@@ -360,6 +361,7 @@ def start_new_cycle(resume=False):
     low_volatility_symbols = []
     if resume:
         active_symbols = positionsdb.get_active_positions()
+        pending_orders = ordersdb.load_pending_orders()
         symbols = list(active_symbols.keys())
         long_symbols = [s for s, sides in active_symbols.items() if "LONG" in sides]
         short_symbols = [s for s, sides in active_symbols.items() if "SHORT" in sides]
@@ -380,7 +382,8 @@ def start_new_cycle(resume=False):
         for symbol in base_symbols:
             positionsdb.clear_positions(symbol)
         state.pending_orders = {}
-        # TODO: Clear pending orders in the DB
+        for symbol in base_symbols:
+            ordersdb.clear_pending_orders(symbol)
 
         low_volatility_symbols = get_low_volatility_symbols(base_symbols)
         update_contract_sizes(low_volatility_symbols)
@@ -426,7 +429,11 @@ def start_new_cycle(resume=False):
     for symbol in symbols:
         if symbol not in state.positions:
             state.positions[symbol] = {}
+        if symbol not in state.pending_orders:
+            state.pending_orders[symbol] = {}
         positionsdb.load_positions(symbol)
+        ordersdb.load_pending_orders(symbol)
+        # TODO: Probably some logic tailored to pending_orders
         if not state.positions[symbol] and not resume:
             update_trailing_stops_for_symbol(symbol)
             if symbol in long_symbols:
@@ -448,7 +455,8 @@ def run_main_loop():
     positionsdb.init()
 
     active_symbols = positionsdb.get_active_positions()
-    resume_cycle = bool(active_symbols)
+    pending_orders = ordersdb.load_pending_orders()
+    resume_cycle = bool(active_symbols) or bool(pending_orders)
 
     # Ensure we have valid symbols before entering the main loop
     symbols = None
