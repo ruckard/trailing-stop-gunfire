@@ -13,6 +13,7 @@ DEFAULT_TRAILING_COUNT = None
 
 MIN_PRICE_INCREMENTS = None
 positions = {}
+pending_orders = {}
 DEBUG_MODE = None
 TRAILING_STOPS_MAP = None
 LAST_AVAILABLE_BALANCE = None

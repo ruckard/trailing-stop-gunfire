@@ -211,6 +211,7 @@ def generate_signature(api_secret, url_path, nonce, body_str):
 
 # === Store Positions ===
 state.positions = {}
+state.pending_orders = {}
 
 def prune_base_symbols_cache():
     if BASE_SYMBOLS_CACHE["timestamp"] is None:
@@ -378,6 +379,8 @@ def start_new_cycle(resume=False):
         state.positions = {}
         for symbol in base_symbols:
             positionsdb.clear_positions(symbol)
+        state.pending_orders = {}
+        # TODO: Clear pending orders in the DB
 
         low_volatility_symbols = get_low_volatility_symbols(base_symbols)
         update_contract_sizes(low_volatility_symbols)
