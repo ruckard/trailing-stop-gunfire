@@ -81,23 +81,23 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
         trail_value = round(current_price * (callback_rate_float / 100), precision)
 
         side = "BUY" if position_side == "SHORT" else "SELL"  # Closing side
-        market_side = "SELL" if position_side == "SHORT" else "BUY"  # Entry side
+        entry_side = "SELL" if position_side == "SHORT" else "BUY"  # Entry side
 
         url_path = '/api/v2.2/order'
         full_url = BASE_URL + url_path
 
-        # === Market Order ===
-        debug(f"[DEBUG] Placing MARKET order: {market_side} {contracts} contracts")
+        # === Limit Order (Formerly Market Order) ===
+        debug(f"[DEBUG] Placing LIMIT order: {entry_side} {contracts} contracts at {limit_entry_price}")
         nonce = str(int(time.time() * 1000))
-        market_order = {
+        limit_order = {
             "postOnly": False,
-            "price": 0.0,
+            "price": float(limit_entry_price),
             "reduceOnly": False,
-            "side": market_side,
+            "side": entry_side,
             "size": contracts,
             "symbol": symbol,
             "time_in_force": "GTC",
-            "type": "MARKET",
+            "type": "LIMIT",
             "txType": "LIMIT",
             "positionMode": "ISOLATED"
         }
@@ -110,9 +110,8 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
             else:
                 ROUND_SIDE=ROUND_HALF_UP
             custom_sl = Decimal(str(custom_sl)).quantize(Decimal(str(min_price_increment)), rounding=ROUND_SIDE)
-            market_order["stopLossPrice"] = float(custom_sl)
-            market_order["stopLossTrigger"] = "lastPrice"
-
+            limit_order["stopLossPrice"] = float(custom_sl)
+            limit_order["stopLossTrigger"] = "lastPrice"
             stop_loss_price = float(custom_sl)
 
         custom_tp = state.TREND_TAKE_PROFITS.get(symbol)
@@ -123,42 +122,41 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
             else:
                 ROUND_SIDE=ROUND_HALF_UP
             custom_tp = Decimal(str(custom_tp)).quantize(Decimal(str(min_price_increment)), rounding=ROUND_SIDE)
-            market_order["takeProfitPrice"] = float(custom_tp)
-            market_order["takeProfitTrigger"] = "lastPrice"
-
+            limit_order["takeProfitPrice"] = float(custom_tp)
+            limit_order["takeProfitTrigger"] = "lastPrice"
             take_profit_price = float(custom_tp)
 
         score = state.TREND_SCORES_TMP.get(symbol)
 
-        market_body_str = json.dumps(market_order, separators=(',', ':'))
-        market_sig = exchange.generate_signature(API_SECRET, url_path, nonce, market_body_str)
-        market_headers = {
+        limit_body_str = json.dumps(limit_order, separators=(',', ':'))
+        limit_sig = exchange.generate_signature(API_SECRET, url_path, nonce, limit_body_str)
+        limit_headers = {
             'request-api': API_KEY,
             'request-nonce': nonce,
-            'request-sign': market_sig,
+            'request-sign': limit_sig,
             'Content-Type': 'application/json'
         }
 
-        debug(f"MARKET order payload: {market_body_str}")
-        market_response = exchange.throttled_request('POST', full_url, headers=market_headers, data=market_body_str)
-        debug(f"MARKET order response status: {market_response.status_code}")
-        debug(f"MARKET order response body: {market_response.text}")
-        market_response.raise_for_status()
-        market_data = market_response.json()
-        if not isinstance(market_data, list) or not market_data:
-            print_with_date("[ERROR] Unexpected market order response.")
+        debug(f"LIMIT order payload: {limit_body_str}")
+        limit_response = exchange.throttled_request('POST', full_url, headers=limit_headers, data=limit_body_str)
+        debug(f"LIMIT order response status: {limit_response.status_code}")
+        debug(f"LIMIT order response body: {limit_response.text}")
+        limit_response.raise_for_status()
+        limit_data = limit_response.json()
+
+        if not isinstance(limit_data, list) or not limit_data:
+            print_with_date("[ERROR] Unexpected limit order response.")
             return None, None, None, None, None, None
 
-        position_id = market_data[0].get('positionId')
+        position_id = limit_data[0].get('positionId')
         if not position_id:
             print_with_date("[ERROR] Missing position ID.")
             return None, None, None, None, None, None
 
-        opening_order_id = market_data[0].get('orderID')
-        opening_price = market_data[0].get('price')
+        opening_order_id = limit_data[0].get('orderID')
+        opening_price = limit_data[0].get('price')
 
-        # Wait for the market order to be executed
-        # before binding the TP/SL order
+        # Wait for the entry order to be processed
         time.sleep(1)
         debug(f"Placing Bind TP/SL order for {side} | TP: {take_profit_price if 'take_profit_price' in locals() else 'N/A'} | SL: {stop_loss_price if 'stop_loss_price' in locals() else 'N/A'}")
 
@@ -169,9 +167,7 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
         tpsl_order = {
             "symbol": symbol,
             "side": side,
-            #"takeProfitPrice": take_profit_price,
-            #"takeProfitTrigger": "markPrice",
-            "stopLossPrice": float(custom_sl),
+            "stopLossPrice": float(custom_sl) if custom_sl is not None else None,
             "stopLossTrigger": "lastPrice",
             "positionMode": "ISOLATED",
             "positionId": position_id
@@ -208,13 +204,13 @@ def place_trailing_stop(symbol, position_side, callback_rate, contracts):
         print_with_date(f"[ERROR] Failed to place BIND TP/SL order: {e}")
 
         # Extra debug info if variables exist
-        if 'market_body_str' in locals():
-            print_with_date(f"[ERROR-Debug] MARKET order payload: {market_body_str}")
-        if 'market_response' in locals() and market_response is not None:
-            if hasattr(market_response, 'status_code'):
-                print_with_date(f"[ERROR-Debug] MARKET order response status: {market_response.status_code}")
-            if hasattr(market_response, 'text'):
-                print_with_date(f"[ERROR-Debug] MARKET order response body: {market_response.text}")
+        if 'limit_body_str' in locals():
+            print_with_date(f"[ERROR-Debug] LIMIT order payload: {limit_body_str}")
+        if 'limit_response' in locals() and limit_response is not None:
+            if hasattr(limit_response, 'status_code'):
+                print_with_date(f"[ERROR-Debug] LIMIT order response status: {limit_response.status_code}")
+            if hasattr(limit_response, 'text'):
+                print_with_date(f"[ERROR-Debug] LIMIT order response body: {limit_response.text}")
 
         # Extra debug info if variables exist
         if 'tpsl_body_str' in locals():
