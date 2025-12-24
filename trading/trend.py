@@ -509,9 +509,9 @@ def calculate_easy_trend10_with_rsi_real(symbol, lookback=50, rsi_period=14,
     """
 
     # Hard-coded minimum stop loss requirement
-    MANDATORY_MIN_SL_PCT = 0.01  # 1.00%
+    MANDATORY_MIN_SL_PCT = 0.005  # 0.50%
     # Hard-coded minimum take profit requirement
-    MANDATORY_MIN_TP_PCT = 0.01  # 1.00%
+    MANDATORY_MIN_TP_PCT = 0.005  # 0.50%
 
     def _clamp(x, lo, hi):
         return max(lo, min(x, hi))
