@@ -358,7 +358,7 @@ def start_new_cycle(resume=False):
     global VERY_FIRST_CACHE
     low_volatility_symbols = []
     if resume:
-        active_symbols = positionsdb.get_active_symbols()
+        active_symbols = positionsdb.get_active_positions()
         symbols = list(active_symbols.keys())
         long_symbols = [s for s, sides in active_symbols.items() if "LONG" in sides]
         short_symbols = [s for s, sides in active_symbols.items() if "SHORT" in sides]
@@ -444,7 +444,7 @@ def start_new_cycle(resume=False):
 def run_main_loop():
     positionsdb.init()
 
-    active_symbols = positionsdb.get_active_symbols()
+    active_symbols = positionsdb.get_active_positions()
     resume_cycle = bool(active_symbols)
 
     # Ensure we have valid symbols before entering the main loop

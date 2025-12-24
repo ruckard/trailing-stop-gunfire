@@ -113,7 +113,7 @@ def clear_positions(symbol):
     conn.commit()
     conn.close()
 
-def get_active_symbols():
+def get_active_positions():
     conn = sqlite3.connect(state.DB_PATH)
     c = conn.cursor()
     c.execute("SELECT DISTINCT symbol, side FROM positions WHERE active = 1")
