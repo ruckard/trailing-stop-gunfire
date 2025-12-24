@@ -230,6 +230,9 @@ def get_base_symbols():
 
         # 3️⃣ Filter symbols by age and volume using the new helper
         filtered_symbols = filter_symbols_by_age_and_volume(market_summary)
+        ai_debug_log("get_base_symbols", {
+            "filtered_symbols": filtered_symbols
+        })
 
         # 4️⃣ Update DB registry with filtered symbols
         update_symbol_registry(filtered_symbols)
