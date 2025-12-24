@@ -4,7 +4,7 @@ import threading
 import hashlib
 import json
 
-CACHE_TTL = 300
+CACHE_TTL = 60
 REQUEST_DELAY = 0.5  # 500 ms between requests to exchange
 
 def _make_cache_key(func_name, args):
