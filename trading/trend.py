@@ -510,6 +510,8 @@ def calculate_easy_trend10_with_rsi_real(symbol, lookback=50, rsi_period=14,
 
     # Hard-coded minimum stop loss requirement
     MANDATORY_MIN_SL_PCT = 0.01  # 1.00%
+    # Hard-coded minimum take profit requirement
+    MANDATORY_MIN_TP_PCT = 0.01  # 1.00%
 
     def _clamp(x, lo, hi):
         return max(lo, min(x, hi))
@@ -679,6 +681,12 @@ def calculate_easy_trend10_with_rsi_real(symbol, lookback=50, rsi_period=14,
         if sl_dist < MANDATORY_MIN_SL_PCT:
             return _reject("stop_loss_too_tight_long", {"dist": sl_dist})
 
+        take_profit_target = early_low + (early_high - early_low) * 0.893
+        # Long Take Profit Check
+        tp_dist = (take_profit_target - current_price) / current_price
+        if tp_dist < MANDATORY_MIN_TP_PCT:
+            return _reject("take_profit_too_tight_long", {"dist": tp_dist})
+
         # --- Previous candle confirmation (bullish)
         try:
             prev_open = df['open'].iloc[-2]
@@ -796,7 +804,7 @@ def calculate_easy_trend10_with_rsi_real(symbol, lookback=50, rsi_period=14,
 
         advice_data["trailing_trigger_price"] = long_trailing_trigger_price
         advice_data["stop_loss"] = fib_retrace_long
-        advice_data["take_profit"] = early_low + (early_high - early_low) * 0.893
+        advice_data["take_profit"] = take_profit_target
         advice_data["current_price"] = current_price
 
         stop_distance_pct = abs(current_price - advice_data["stop_loss"]) / current_price
@@ -862,6 +870,12 @@ def calculate_easy_trend10_with_rsi_real(symbol, lookback=50, rsi_period=14,
         sl_dist = (fib_retrace_short - current_price) / current_price
         if sl_dist < MANDATORY_MIN_SL_PCT:
             return _reject("stop_loss_too_tight_short", {"dist": sl_dist})
+
+        take_profit_target = early_high - (early_high - early_low) * 0.893
+        # Short Take Profit Check
+        tp_dist = (current_price - take_profit_target) / current_price
+        if tp_dist < MANDATORY_MIN_TP_PCT:
+            return _reject("take_profit_too_tight_short", {"dist": tp_dist})
 
         # --- Previous candle confirmation (bearish)
         try:
@@ -978,7 +992,7 @@ def calculate_easy_trend10_with_rsi_real(symbol, lookback=50, rsi_period=14,
 
         advice_data["trailing_trigger_price"] = short_trailing_trigger_price
         advice_data["stop_loss"] = fib_retrace_short
-        advice_data["take_profit"] = early_high - (early_high - early_low) * 0.893
+        advice_data["take_profit"] = take_profit_target
         advice_data["current_price"] = current_price
 
         stop_distance_pct = abs(current_price - advice_data["stop_loss"]) / current_price
